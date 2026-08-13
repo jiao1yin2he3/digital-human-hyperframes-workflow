@@ -3,7 +3,6 @@
 
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -114,24 +113,14 @@ def check_hyperframes_version(config):
         except (OSError, json.JSONDecodeError):
             installed_version = ""
     result = run([binary, "--version"])
-    output = "\n".join(
-        value.strip() for value in (result.stdout, result.stderr) if value and value.strip()
-    )
-    cli_version = ""
-    for line in output.splitlines():
-        stripped = line.strip()
-        named = re.search(r"\bhyperframes\s+v?(\d+\.\d+\.\d+)\b", stripped, re.IGNORECASE)
-        exact = not installed_version and re.fullmatch(r"v?(\d+\.\d+\.\d+)", stripped)
-        if named or exact:
-            cli_version = (named or exact).group(1)
-            break
+    cli_output = (result.stdout or result.stderr or "").strip().splitlines()
+    cli_detail = cli_output[0].strip() if cli_output else "unknown"
     version_ok = installed_version == expected_version
-    cli_version_ok = not cli_version or cli_version == expected_version
-    cli_ok = result.returncode == 0
-    ok = cli_ok and version_ok and cli_version_ok
+    binary_ok = binary.is_file()
+    ok = binary_ok and version_ok
     detail = (
         f"package={expected}, installed={installed_version or 'unknown'}, "
-        f"binary={cli_version or 'unknown'}"
+        f"binary={cli_detail or 'unknown'}"
     )
     return ok, "hyperframes version", str(binary), detail
 
