@@ -1,5 +1,7 @@
 # HyperFrames Workflow
 
+[简体中文](README.zh-CN.md) | English
+
 Auditable short-video production workflow built around HyperFrames, IndexTTS2,
 SadTalker, Whisper alignment, ffmpeg composition, visual style gates, and
 optional Bilibili publishing.
@@ -17,6 +19,10 @@ avatars, generated videos, cookies, or publishing queue data.
 - Targets 58.0–59.0 seconds with a hard 59.5-second final-video gate; scripts use 260–290 effective characters and a 1.30x final audio source.
 - Validates style diversity, timeline consistency, audio recognizability, and visual output.
 - Writes a machine-readable run manifest for resume, repair, and idempotent upload.
+- Supports multilingual scripts at the orchestration layer through UTF-8 script
+  files and configurable Whisper language codes such as `zh`, `en`, `ja`, `ko`,
+  `es`, `fr`, and `de`. Actual speech quality depends on the local TTS engine,
+  reference voice, and model support for the target language.
 
 ## Requirements
 
@@ -63,8 +69,8 @@ Update:
 
 - `projects/my-topic/index.html`
 - `projects/my-topic/STYLE_PLAN.yaml`
-- `projects/my-topic/口播稿.txt`
-- `projects/my-topic/素材.md`
+- `projects/my-topic/口播稿.txt` or another UTF-8 script file such as `script.en.txt`
+- `projects/my-topic/素材.md` or another research-notes file
 - `config_daily.local.yaml`
 
 Run:
@@ -95,6 +101,8 @@ visibility control.
 - `docs/BILIBILI_UPLOAD.md` defines the optional Bilibili queue adapter contract.
 - `requirements-workflow.txt` lists the Python packages used by the orchestration layer.
 - `docs/DAILY_AGENT_PROMPT.template.md` is a sanitized automation prompt template.
+- `pipeline.whisper_language` configures the Whisper language used by caption
+  alignment and audio gates. Keep it aligned with the script and TTS voice.
 
 `workflow.local.yaml`, media assets, generated project outputs, validation
 artifacts, and private publishing markers are ignored by Git.

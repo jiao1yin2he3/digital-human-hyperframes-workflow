@@ -146,16 +146,20 @@ def execute(args):
     policy_min_chars = policy.get("voiceover_min_chars")
     policy_max_chars = policy.get("voiceover_max_chars")
     policy_end_padding = policy.get("end_padding_seconds")
+    policy_whisper_language = policy.get("whisper_language")
     if policy_limit is None or float(policy_limit) != configured_limit:
         raise RuntimeError("manifest duration policy 与当前配置不一致，禁止上传")
     configured_speed = float(str(get_config_value(WORKFLOW_CONFIG, "pipeline.audio_speed", 1.30)))
     configured_end_padding = float(str(get_config_value(WORKFLOW_CONFIG, "pipeline.end_padding_seconds", 1.2)))
+    configured_whisper_language = str(get_config_value(WORKFLOW_CONFIG, "pipeline.whisper_language", "zh") or "zh").strip() or "zh"
     configured_min_chars = int(str(get_config_value(WORKFLOW_CONFIG, "pipeline.voiceover_min_chars", 260) or 260))
     configured_max_chars = int(str(get_config_value(WORKFLOW_CONFIG, "pipeline.voiceover_max_chars", 290) or 290))
     if policy_speed is None or float(policy_speed) != configured_speed:
         raise RuntimeError("manifest audio_speed 与当前配置不一致，禁止上传")
     if policy_end_padding is None or float(policy_end_padding) != configured_end_padding:
         raise RuntimeError("manifest end_padding_seconds 与当前配置不一致，禁止上传")
+    if policy_whisper_language is None or str(policy_whisper_language) != configured_whisper_language:
+        raise RuntimeError("manifest whisper_language 与当前配置不一致，禁止上传")
     if policy_min_chars is None or int(policy_min_chars) != configured_min_chars:
         raise RuntimeError("manifest voiceover_min_chars 与当前配置不一致，禁止上传")
     if policy_max_chars is None or int(policy_max_chars) != configured_max_chars:
@@ -263,7 +267,10 @@ def execute(args):
         raise RuntimeError(f"缺少有效口播稿: {text_file}")
     validate_voiceover(text_file.read_text(encoding="utf-8").strip())
 
-    verify_res = run_checked([SYS_PY, ROOT / "scripts" / "whisper_f0.py", "--audio", audio_path], timeout=300)
+    verify_res = run_checked(
+        [SYS_PY, ROOT / "scripts" / "whisper_f0.py", "--audio", audio_path, "--language", configured_whisper_language],
+        timeout=300,
+    )
     try:
         raw_out = verify_res.stdout.strip().splitlines()[-1]
         whisper_data = json.loads(raw_out)

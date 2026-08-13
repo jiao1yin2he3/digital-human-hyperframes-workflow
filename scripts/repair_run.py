@@ -142,6 +142,7 @@ def main():
     max_final_duration = float(get_config_value(CONFIG, "pipeline.max_final_duration", 59.5))
     end_padding_seconds = max(0.0, float(get_config_value(CONFIG, "pipeline.end_padding_seconds", 1.2)))
     audio_speed = float(get_config_value(CONFIG, "pipeline.audio_speed", 1.30))
+    whisper_language = str(get_config_value(CONFIG, "pipeline.whisper_language", "zh") or "zh").strip() or "zh"
     voiceover_min_chars = int(get_config_value(CONFIG, "pipeline.voiceover_min_chars", 260) or 260)
     voiceover_max_chars = int(get_config_value(CONFIG, "pipeline.voiceover_max_chars", 290) or 290)
 
@@ -203,7 +204,10 @@ def main():
         )
 
     # 3. 校验 Whisper + F0
-    verify_res = run_checked("verify-audio", [SYS_PY, ROOT / "scripts" / "whisper_f0.py", "--audio", paths["audio"]])
+    verify_res = run_checked(
+        "verify-audio",
+        [SYS_PY, ROOT / "scripts" / "whisper_f0.py", "--audio", paths["audio"], "--language", whisper_language],
+    )
     try:
         raw_out = verify_res["output_tail"].strip().splitlines()[-1]
         whisper_data = json.loads(raw_out)
@@ -324,6 +328,7 @@ def main():
             "max_final_duration": max_final_duration,
             "end_padding_seconds": end_padding_seconds,
             "audio_speed": audio_speed,
+            "whisper_language": whisper_language,
             "voiceover_min_chars": voiceover_min_chars,
             "voiceover_max_chars": voiceover_max_chars,
             "effective_chars": eff_chars,

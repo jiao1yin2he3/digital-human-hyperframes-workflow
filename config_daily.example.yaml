@@ -6,6 +6,8 @@ name: replace_me
 ref: cosyvoice/ref_user5_clean.wav
 photo: digital-human/user_avatar.jpg
 html: projects/replace_me/index.html
+# Any UTF-8 script path is accepted. Chinese examples use 口播稿.txt;
+# multilingual projects may use script.txt, voiceover.en.txt, etc.
 text: projects/replace_me/口播稿.txt
 style_plan: projects/replace_me/STYLE_PLAN.yaml
 style_history: STYLE_HISTORY.md

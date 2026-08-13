@@ -166,6 +166,12 @@ def main():
         default=os.environ.get("HFW_SYS_PY", str(PROJECT_ROOT / "venv" / "bin" / "python")),
         help="Python interpreter used for faster-whisper verification.",
     )
+    parser.add_argument(
+        "--whisper-language",
+        type=str,
+        default=os.environ.get("HFW_WHISPER_LANGUAGE", "zh"),
+        help="faster-whisper language code used for content verification.",
+    )
     args = parser.parse_args()
 
     default_text = (
@@ -194,6 +200,7 @@ def main():
     repetition_penalty = args.repetition_penalty
     required_keywords = [item.strip() for item in args.required_keywords.split(",") if item.strip()]
     whisper_python = args.whisper_python
+    whisper_language = args.whisper_language
 
     try:
         from scripts.tts_quality import (
@@ -366,8 +373,8 @@ def main():
         str(whisper_python), "-c",
         "from faster_whisper import WhisperModel; "
         "model = WhisperModel('base', device='cpu', compute_type='int8'); "
-        "segments, info = model.transcribe('{}', language='zh'); "
-        "print(''.join(seg.text for seg in segments))".format(output_path)
+        f"segments, info = model.transcribe({output_path!r}, language={whisper_language!r}); "
+        "print(''.join(seg.text for seg in segments))"
     ]
     trans_res = subprocess.run(whisper_cmd, capture_output=True, text=True)
     if trans_res.returncode != 0:

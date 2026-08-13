@@ -9,6 +9,10 @@
 生成口播稿、STYLE_PLAN、HyperFrames HTML，完成本地机器校验，并根据上传策略
 决定是否进入 Bilibili 队列。
 
+可配置目标语言。脚本文件必须是 UTF-8；将 `workflow.local.yaml` 的
+`pipeline.whisper_language` 设置为目标语言码，例如 `zh`、`en`、`ja`、`ko`、
+`es`、`fr`、`de`。脚本文案、TTS 参考音频、TTS 模型能力和 Whisper 语言码必须一致。
+
 ## 安全规则
 
 1. 只能修改本期 `projects/<topic>/` 内容和本地运行产物。

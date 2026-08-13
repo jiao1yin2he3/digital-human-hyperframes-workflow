@@ -36,6 +36,7 @@ DEFAULT_CONFIG = {
         "tts_emo_text": "平静、专业、克制的科技新闻播报。重点信息略微强调，遇到结论时有一点自然的强调，但不要夸张、不要激动、不要悲伤，保持清晰和可信。",
         "tts_emo_audio_prompt": "",
         "tts_required_keywords": "",
+        "whisper_language": "zh",
         "voiceover_min_chars": 260,
         "voiceover_max_chars": 290,
         "sadtalker_pose_style": "12",

@@ -211,11 +211,12 @@ def main():
     parser.add_argument("--script", required=True, help="口播稿路径")
     parser.add_argument("--output", required=True, help="输出 JSON 路径")
     parser.add_argument("--model", default="base", help="Whisper 模型大小")
+    parser.add_argument("--language", default="zh", help="faster-whisper language code, for example zh, en, ja, ko")
     args = parser.parse_args()
 
     # 转录
     print(f"📝 Whisper 转录: {args.audio}")
-    whisper_data = whisper_transcribe(args.audio, args.model)
+    whisper_data = whisper_transcribe(args.audio, args.model, args.language)
     print(f"   → {len(whisper_data)} 段，总时长 {whisper_data[-1]['end']:.2f}s")
 
     # 拆分脚本

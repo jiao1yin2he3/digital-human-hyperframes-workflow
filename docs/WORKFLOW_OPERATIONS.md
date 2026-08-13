@@ -42,6 +42,10 @@ python3 scripts/pipeline_daily.py \
 - `workflow.local.yaml` 不应进入版本控制；它只记录本机 venv、模型、biliup 队列等路径。
 - 公开仓库使用 `STYLE_HISTORY.example.md` 作为起始模板；真实的 `STYLE_HISTORY.md`
   只保留在本机，不要提交其中的生产项目记录。
+- 多语言项目可把 `config_daily.local.yaml` 的 `text` 指向任意 UTF-8 脚本文件，
+  并在 `workflow.local.yaml` 设置 `pipeline.whisper_language`，例如 `zh`、`en`、
+  `ja`、`ko`、`es`、`fr`、`de`。该语言码会进入 resume 合同、字幕对齐、
+  音频门禁和上传前复核。
 
 ## 恢复运行
 

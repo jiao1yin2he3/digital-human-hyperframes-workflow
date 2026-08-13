@@ -11,11 +11,12 @@ import numpy as np
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--audio", required=True)
+    ap.add_argument("--language", default="zh", help="faster-whisper language code, for example zh, en, ja, ko")
     args = ap.parse_args()
 
     from faster_whisper import WhisperModel
     m = WhisperModel("base", device="cpu", compute_type="int8")
-    segs, _ = m.transcribe(args.audio, language="zh")
+    segs, _ = m.transcribe(args.audio, language=args.language)
     text = "".join(s.text for s in segs)
 
     # F0

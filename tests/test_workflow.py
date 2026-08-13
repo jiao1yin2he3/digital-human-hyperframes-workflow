@@ -493,6 +493,7 @@ class ExtraRegressionTests(unittest.TestCase):
                 "audio_speed": 1.30,
                 "max_final_duration": 59.5,
                 "end_padding_seconds": 1.2,
+                "whisper_language": "zh",
                 "voiceover_min_chars": 260,
                 "voiceover_max_chars": 290,
             }
@@ -599,6 +600,7 @@ class ExtraRegressionTests(unittest.TestCase):
                     "audio_speed": 1.30,
                     "max_final_duration": 59.5,
                     "end_padding_seconds": 1.2,
+                    "whisper_language": "zh",
                     "voiceover_min_chars": 260,
                     "voiceover_max_chars": 290,
                 },
@@ -636,6 +638,65 @@ class ExtraRegressionTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError) as ctx:
                     upload_video.execute(args)
             self.assertIn("音频 48.00s + 尾部缓冲 1.20s", str(ctx.exception))
+
+    def test_upload_rejects_manifest_with_different_whisper_language(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory) / "demo"
+            project.mkdir()
+            video = project / "final_video.mp4"
+            video.write_bytes(b"vid")
+            audio = project / "voiceover_130.wav"
+            audio.write_bytes(b"audio")
+            html = project / "index.html"
+            html.write_text("<html></html>", encoding="utf-8")
+            text = project / "script.txt"
+            text.write_text("中" * 270, encoding="utf-8")
+            dh = project / "digital_human.mp4"
+            mv = project / "main_video.mp4"
+            dh.write_bytes(b"dh")
+            mv.write_bytes(b"mv")
+            run_dir = project / "runs" / "run1"
+            run_dir.mkdir(parents=True)
+            manifest = {
+                "schema_version": 1,
+                "run_id": "run1",
+                "project": "demo",
+                "status": "validated",
+                "policy": {
+                    "audio_speed": 1.30,
+                    "max_final_duration": 59.5,
+                    "end_padding_seconds": 1.2,
+                    "whisper_language": "en",
+                    "voiceover_min_chars": 260,
+                    "voiceover_max_chars": 290,
+                },
+                "outputs": {
+                    "html": str(html),
+                    "text": str(text),
+                    "final_audio": str(audio),
+                    "final_video_sha256": upload_video.sha256_file(video),
+                    "digital_human": str(dh),
+                    "main_video": str(mv),
+                    "duration": 50.0,
+                },
+                "tts_synthesis_report": {
+                    "f0_audit": {"passed": True},
+                    "content_acceptance": {"passed": True},
+                },
+            }
+            (project / "run-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            (run_dir / "run-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            args = SimpleNamespace(
+                project=str(project), video=str(video), name="demo",
+                style_plan=str(project / "plan.yaml"), style_history=str(project / "history.md"),
+                title="title", desc="", dynamic="", tag="tag", public=False,
+                reuse_pipeline_lock=True,
+            )
+            (project / "plan.yaml").write_text("project: demo\n", encoding="utf-8")
+            (project / "history.md").write_text("# History\n", encoding="utf-8")
+            with self.assertRaises(RuntimeError) as ctx:
+                upload_video.execute(args)
+            self.assertIn("whisper_language", str(ctx.exception))
 
     def test_append_style_history_lock_path_name(self):
         with tempfile.TemporaryDirectory() as directory:

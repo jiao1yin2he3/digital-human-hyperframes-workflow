@@ -79,6 +79,7 @@ TTS_EMO_TEXT = str(
     or DEFAULT_NEWS_EMOTION_TEXT
 ).strip() or DEFAULT_NEWS_EMOTION_TEXT
 TTS_EMO_AUDIO_PROMPT = str(get_config_value(WORKFLOW_CONFIG, "pipeline.tts_emo_audio_prompt", "") or "").strip() or None
+WHISPER_LANGUAGE = str(get_config_value(WORKFLOW_CONFIG, "pipeline.whisper_language", "zh") or "zh").strip() or "zh"
 TTS_USE_EMO_TEXT = bool(get_config_value(WORKFLOW_CONFIG, "pipeline.tts_use_emo_text", True))
 TTS_USE_RANDOM = bool(get_config_value(WORKFLOW_CONFIG, "pipeline.tts_use_random", False))
 try:
@@ -163,6 +164,7 @@ def build_pipeline_policy():
         "tts_emo_alpha": TTS_EMO_ALPHA,
         "tts_emo_text": TTS_EMO_TEXT,
         "tts_emo_audio_prompt": TTS_EMO_AUDIO_PROMPT,
+        "whisper_language": WHISPER_LANGUAGE,
         "tts_use_emo_text": TTS_USE_EMO_TEXT,
         "tts_use_random": TTS_USE_RANDOM,
         "tts_temperature": TTS_TEMPERATURE,
@@ -529,7 +531,7 @@ class PipelineRun:
 
     def verify_audio(self, path, step):
         helper = ROOT / "scripts" / "whisper_f0.py"
-        result = self.run_checked(step, [SYS_PY, helper, "--audio", path], timeout=300)
+        result = self.run_checked(step, [SYS_PY, helper, "--audio", path, "--language", WHISPER_LANGUAGE], timeout=300)
         try:
             data = json.loads(result.stdout.strip())
             text = str(data["text"]).strip()
@@ -727,6 +729,8 @@ def execute(args):
                     str(pipeline.run_dir / "tts-synthesis-report.json"),
                     "--whisper-python",
                     str(SYS_PY),
+                    "--whisper-language",
+                    WHISPER_LANGUAGE,
                     *(["--required-keywords", ",".join(TTS_REQUIRED_KEYWORDS)] if TTS_REQUIRED_KEYWORDS else []),
                     *(["--emo-text", TTS_EMO_TEXT] if TTS_EMO_TEXT else []),
                     *(["--emo-audio-prompt", TTS_EMO_AUDIO_PROMPT] if TTS_EMO_AUDIO_PROMPT else []),
@@ -852,6 +856,8 @@ def execute(args):
                     captions_tmp,
                     "--model",
                     "base",
+                    "--language",
+                    WHISPER_LANGUAGE,
                 ],
                 timeout=900,
             )
