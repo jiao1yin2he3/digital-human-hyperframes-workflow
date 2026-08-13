@@ -109,6 +109,13 @@ def check_hyperframes_version(config):
     return ok, "hyperframes version", str(binary), detail
 
 
+def check_config_allow_resume(config):
+    allow_resume = get_config_value(config, "pipeline.allow_resume", False)
+    ok = (allow_resume is False)
+    detail = "ok (false)" if ok else "FAIL: pipeline.allow_resume must be false in production contract"
+    return ok, "config allow_resume", "pipeline.allow_resume", detail
+
+
 def main():
     try:
         config = load_workflow_config(ROOT)
@@ -120,6 +127,9 @@ def main():
     indextts_python = config_path(ROOT, config, "paths.indextts_python")
     sadtalker_python = config_path(ROOT, config, "paths.sadtalker_python")
     indextts_checkpoints = config_path(ROOT, config, "paths.indextts_checkpoints")
+    biliup_root = config_path(ROOT, config, "paths.biliup_root")
+    biliup_pipeline = biliup_root / "pipeline"
+
     checks = [
         check_file("sys python", sys_python, executable=True),
         check_file("indextts python", indextts_python, executable=True),
@@ -130,10 +140,6 @@ def main():
         check_file("style guide", config_path(ROOT, config, "paths.style_guide")),
         check_file("hyperframes bin", config_path(ROOT, config, "paths.hyperframes_bin"), executable=True),
         check_dir("projects dir", config_path(ROOT, config, "paths.projects_dir")),
-        check_dir("biliup root", biliup_root),
-        check_dir("biliup pipeline", biliup_pipeline),
-        check_file("biliup enqueue", biliup_pipeline / "bin" / "enqueue-video.sh", executable=True),
-        check_file("biliup publish", biliup_pipeline / "bin" / "publish-queue.sh", executable=True),
         check_command("ffmpeg"),
         check_command("ffprobe"),
         check_python_import("sys python yaml", sys_python, "yaml"),
@@ -148,10 +154,9 @@ def main():
             indextts_checkpoints / "qwen0.6bemo4-merge" / "model.safetensors",
         ),
         check_hyperframes_version(config),
+        check_config_allow_resume(config),
     ]
 
-    biliup_root = config_path(ROOT, config, "paths.biliup_root")
-    biliup_pipeline = biliup_root / "pipeline"
     if biliup_root.is_dir():
         checks.extend(
             [

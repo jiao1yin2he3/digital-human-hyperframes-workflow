@@ -52,41 +52,99 @@ def normalize(s: str) -> str:
     """去掉所有非中文字符用于模糊匹配（数字也保留，因为口播常用阿拉伯数字）。"""
     return re.sub(r'[^\u4e00-\u9fff0-9a-zA-Z]', '', s)
 
-def map_captions(whisper_data: list[dict], sentences: list[str]) -> list[dict]:
-    """将脚本句子映射到 Whisper 时间戳（真对齐）。
-
-    策略：
-    1. 优先用文本前缀匹配 Whisper 全文，匹配上的句子直接采用 Whisper 段时间。
-    2. 匹配失败（因 ASR 错字导致口播稿与转写文本差异大）时，按脚本文本累计位置
-       映射到 Whisper 全文，并在对应 Whisper 段内插值，避免把整段音频均分给句子。
-
-    核心铁律：字幕时间优先来自 Whisper 实际语音时间戳；兜底也必须落在 Whisper 段内。
-    """
-    if not whisper_data or not sentences:
+def _redistribute_and_validate(raw_items: list[dict], total_audio: float) -> list[dict]:
+    if not raw_items:
         return []
 
-    total_audio = whisper_data[-1]["end"]
+    n = len(raw_items)
+    min_dur = 0.05
+    min_needed = n * 0.01
 
-    # 把 whisper 转写拼接成全文，记录每段的边界
-    full_text = ""
-    seg_bounds = []  # (start, end, text)
-    for seg in whisper_data:
-        t = seg["text"]
-        full_text += t
-        seg_bounds.append((seg["start"], seg["end"], t))
-
-    # 归一化全文，便于匹配
-    full_norm = normalize(full_text)
-    if not full_norm:
-        return []
-    script_norm_lengths = [len(normalize(sentence)) for sentence in sentences]
-    script_total = sum(script_norm_lengths)
+    if total_audio < min_needed:
+        raise ValueError(f"音频时长 ({total_audio:.3f}s) 太短，无法分配给 {n} 句字幕")
 
     captions = []
-    pos = 0  # 在 full_norm 中的位置
     prev_end = 0.0
 
-    script_cursor = 0
+    for i, item in enumerate(raw_items):
+        rem_count = n - i
+        max_allowed_end = total_audio - (rem_count - 1) * 0.01
+
+        s = max(item["start"], prev_end)
+        if s >= max_allowed_end:
+            s = max(prev_end, max_allowed_end - 0.01)
+
+        e = max(item["end"], s + min_dur)
+        if e > max_allowed_end:
+            e = max_allowed_end
+
+        if s >= e or (e - s) < 0.01:
+            rem_span = max_allowed_end - prev_end
+            if rem_span < 0.01 * rem_count:
+                raise ValueError(f"无法为第 {i+1} 句脚本分配有效字幕区间 ({s:.2f}s-{e:.2f}s)")
+            alloc_dur = max(0.01, rem_span / rem_count)
+            s = prev_end
+            e = min(max_allowed_end, s + alloc_dur)
+
+        r_start = round(s, 2)
+        r_end = round(e, 2)
+        if r_start >= r_end:
+            r_end = round(r_start + 0.01, 2)
+            if r_end > total_audio:
+                r_start = round(total_audio - 0.01, 2)
+                r_end = round(total_audio, 2)
+
+        if r_start >= r_end or r_end > round(total_audio, 2) or r_start < 0:
+            raise ValueError(f"无法生成有效正时长字幕: [{r_start}-{r_end}s] {item['text']}")
+
+        captions.append({
+            "start": r_start,
+            "end": r_end,
+            "text": item["text"]
+        })
+        prev_end = e
+
+    return captions
+
+
+def map_captions(whisper_data: list[dict], sentences: list[str]) -> list[dict]:
+    """将脚本句子映射到 Whisper 时间戳（真对齐）。"""
+    if not sentences:
+        return []
+    if not whisper_data:
+        raise ValueError("Whisper 转写数据为空")
+
+    total_audio = max((seg.get("end", 0.0) for seg in whisper_data), default=0.0)
+    if total_audio <= 0:
+        raise ValueError(f"Whisper 音频总时长无效: {total_audio}")
+
+    full_text = ""
+    seg_bounds = []
+    for seg in whisper_data:
+        t = seg.get("text", "")
+        full_text += t
+        seg_bounds.append((seg.get("start", 0.0), seg.get("end", 0.0), t))
+
+    full_norm = normalize(full_text)
+    script_norm_lengths = [len(normalize(sentence)) for sentence in sentences]
+    script_total = sum(script_norm_lengths)
+    valid_sentence_count = sum(1 for l in script_norm_lengths if l > 0)
+
+    if valid_sentence_count == 0:
+        return []
+
+    if not full_norm or script_total == 0:
+        raw_items = []
+        cum_len = 0
+        for sent, slen in zip(sentences, script_norm_lengths):
+            if slen == 0:
+                continue
+            s = total_audio * (cum_len / script_total)
+            cum_len += slen
+            e = total_audio * (cum_len / script_total)
+            raw_items.append({"start": s, "end": e, "text": sent})
+        return _redistribute_and_validate(raw_items, total_audio)
+
     def time_at(pos_abs, edge='start'):
         cum = 0
         for i, (s, e, t) in enumerate(seg_bounds):
@@ -97,18 +155,19 @@ def map_captions(whisper_data: list[dict], sentences: list[str]) -> list[dict]:
                     return e
                 if (cum <= pos_abs < cum + n) or (is_last and pos_abs == cum + n):
                     char_offset = pos_abs - cum
-                    return s + (e - s) * (char_offset / n)
+                    return s + (e - s) * (char_offset / n) if e > s else s
                 cum += n
-        return whisper_data[-1]["end"]
+        return total_audio
+
+    pos = 0
+    script_cursor = 0
+    raw_items = []
 
     for sent, script_length in zip(sentences, script_norm_lengths):
         sent_norm = normalize(sent)
         if not sent_norm:
             continue
 
-        # 在 full_norm 中从 pos 开始找 sent_norm 的匹配
-        # 优先整句包含匹配；失败则退化为"子串 + 错字容忍"匹配：
-        # 把口播稿句子按 2-gram 拆分，在 Whisper 全文里找连续命中率最高的窗口
         found = False
         start = end = pos
         window = full_norm[pos:pos + 200]
@@ -118,9 +177,7 @@ def map_captions(whisper_data: list[dict], sentences: list[str]) -> list[dict]:
             end = start + len(sent_norm)
             found = True
         else:
-            # 错字容忍：用句子前 6 个中文字符做"锚点"前缀匹配（ASR 常错同音字，
-            # 但句首实体词往往保留）。若找到锚点，认为该句大致位于此位置。
-            cn_chars = normalize(sent_norm)  # 仅留中文+数字字母
+            cn_chars = normalize(sent_norm)
             if len(cn_chars) >= 4:
                 idx2 = window.find(cn_chars[:6])
                 if idx2 >= 0:
@@ -131,33 +188,22 @@ def map_captions(whisper_data: list[dict], sentences: list[str]) -> list[dict]:
         if found:
             cap_start = time_at(start, 'start')
             cap_end = time_at(end, 'end')
+            pos = end
         else:
-            # 兜底仍映射到 Whisper 字符位置，再在对应段内插值；不按句子数量均分音频。
             norm_start = int(round((script_cursor / max(1, script_total)) * len(full_norm)))
             norm_end = int(round(((script_cursor + script_length) / max(1, script_total)) * len(full_norm)))
             cap_start = time_at(norm_start, "start")
             cap_end = time_at(max(norm_start + 1, norm_end), "end")
+            pos = max(pos, int(round(((script_cursor + script_length) / max(1, script_total)) * len(full_norm))))
 
-        # 钳制 + 最小时长
-        cap_start = max(cap_start, prev_end)
-        if cap_end - cap_start < 0.5:
-            cap_end = min(cap_start + 1.2, total_audio)
-        cap_end = min(cap_end, total_audio)
-
-        captions.append({
-            "start": round(cap_start, 2),
-            "end": round(cap_end, 2),
+        raw_items.append({
+            "start": cap_start,
+            "end": cap_end,
             "text": sent
         })
-
-        prev_end = cap_end
-        if found:
-            pos = end
-        else:
-            pos = max(pos, int(round(((script_cursor + script_length) / max(1, script_total)) * len(full_norm))))
         script_cursor += script_length
 
-    return captions
+    return _redistribute_and_validate(raw_items, total_audio)
 
 def main():
     parser = argparse.ArgumentParser(description="生成字幕时间轴")

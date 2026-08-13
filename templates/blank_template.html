@@ -52,6 +52,32 @@ for(const caption of captions){
   captionTimeline.set(subtitleBox,{opacity:0},Math.max(caption.start,caption.end-0.1));
 }
 window.__timelines={replace_me:captionTimeline};
+
+// 动态场景切换逻辑
+const stage = document.getElementById('stage');
+const totalDuration = Number(stage?.dataset?.duration) || 45;
+const scenes = [...document.querySelectorAll('.scene')];
+if (scenes.length > 0 && totalDuration > 0) {
+  const sceneDuration = totalDuration / scenes.length;
+  scenes.forEach((s, idx) => {
+    s.style.display = idx === 0 ? 'block' : 'none';
+    s.style.opacity = idx === 0 ? '1' : '0';
+  });
+  for (let i = 1; i < scenes.length; i++) {
+    const prev = scenes[i - 1];
+    const next = scenes[i];
+    const t = i * sceneDuration;
+    const fadeOutDelay = Math.max(0, t - 0.4);
+    gsap.to(prev, {
+      opacity: 0,
+      duration: 0.4,
+      delay: fadeOutDelay,
+      onComplete: () => { prev.style.display = 'none'; }
+    });
+    gsap.delayedCall(t, () => { next.style.display = 'block'; });
+    gsap.fromTo(next, { opacity: 0 }, { opacity: 1, duration: 0.4, delay: t });
+  }
+}
 </script>
 </body>
 </html>

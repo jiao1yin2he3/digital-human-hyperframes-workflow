@@ -104,46 +104,53 @@ window.__timelines.template_bigtext=captionTl;
 gsap.to('#header',{opacity:1,duration:0.5,delay:0.3});
 gsap.to('#subbar',{opacity:1,duration:0.3,delay:0.2});
 
-// 场景切换逻辑：使用 setTimeout 直接控制显示
-const scenes=[...document.querySelectorAll('.scene')];
-const sceneTimes=[0,12,24,36]; // 场景开始时间（秒）
+// 场景切换逻辑：从 stage.dataset.duration 动态计算场景时间
+const stageEl = document.getElementById('stage');
+const totalDuration = Number(stageEl?.dataset?.duration) || 45;
+const scenes = [...document.querySelectorAll('.scene')];
+const sceneCount = scenes.length;
 
-// 初始隐藏所有场景
-scenes.forEach(s=>{
-  s.style.display='none';
-  s.style.opacity='0';
-});
+if (sceneCount > 0 && totalDuration > 0) {
+  const sceneInterval = totalDuration / sceneCount;
+  const sceneTimes = Array.from({length: sceneCount}, (_, i) => i * sceneInterval);
 
-// 显示第一个场景
-scenes[0].style.display='flex';
-scenes[0].style.opacity='1';
-
-// 在每个时间点切换场景
-for(let i=1;i<sceneTimes.length;i++){
-  const t=sceneTimes[i]*1000; // 转为毫秒
-  const prevScene=scenes[i-1];
-  const nextScene=scenes[i];
-
-  // 淡出当前场景
-  gsap.to(prevScene,{
-    opacity:0,
-    duration:0.4,
-    delay:(sceneTimes[i]-12)*1000, // 在上一个场景显示结束前0.4s开始淡出
-    onComplete:()=>{
-      prevScene.style.display='none';
-    }
+  // 初始状态：只显示第一个场景
+  scenes.forEach((s, idx) => {
+    s.style.display = idx === 0 ? 'flex' : 'none';
+    s.style.opacity = idx === 0 ? '1' : '0';
   });
-  // 淡入下一个场景
-  nextScene.style.display='flex';
-  gsap.fromTo(nextScene,{opacity:0},{opacity:1,duration:0.4,delay:t-20});
-  // 标题和描述入场动画
-  const title=nextScene.querySelector('.title');
-  const desc=nextScene.querySelector('.desc');
-  if(title){
-    gsap.fromTo(title,{scale:0.9,opacity:0},{scale:1,opacity:1,duration:0.6,delay:t+200});
-  }
-  if(desc){
-    gsap.fromTo(desc,{y:40,opacity:0},{y:0,opacity:1,duration:0.5,delay:t+500});
+
+  for (let i = 1; i < sceneCount; i++) {
+    const prevScene = scenes[i - 1];
+    const nextScene = scenes[i];
+    const t = sceneTimes[i]; // 秒
+
+    // 前一个场景淡出（在 t 前 0.4s 开始淡出）
+    const fadeOutDelay = Math.max(0, t - 0.4);
+    gsap.to(prevScene, {
+      opacity: 0,
+      duration: 0.4,
+      delay: fadeOutDelay,
+      onComplete: () => {
+        prevScene.style.display = 'none';
+      }
+    });
+
+    // 当前场景显现并淡入
+    gsap.delayedCall(t, () => {
+      nextScene.style.display = 'flex';
+    });
+    gsap.fromTo(nextScene, { opacity: 0 }, { opacity: 1, duration: 0.4, delay: t });
+
+    // 标题与描述进场
+    const title = nextScene.querySelector('.title');
+    const desc = nextScene.querySelector('.desc');
+    if (title) {
+      gsap.fromTo(title, { scale: 0.9, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.6, delay: t + 0.1 });
+    }
+    if (desc) {
+      gsap.fromTo(desc, { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, delay: t + 0.25 });
+    }
   }
 }
 </script>

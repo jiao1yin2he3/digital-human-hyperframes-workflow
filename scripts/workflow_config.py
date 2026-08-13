@@ -33,7 +33,7 @@ DEFAULT_CONFIG = {
         "tts_top_p": 0.85,
         "tts_top_k": 30,
         "tts_repetition_penalty": 10.0,
-        "tts_emo_text": "",
+        "tts_emo_text": "平静、专业、克制的科技新闻播报。重点信息略微强调，遇到结论时有一点自然的强调，但不要夸张、不要激动、不要悲伤，保持清晰和可信。",
         "tts_emo_audio_prompt": "",
         "tts_required_keywords": "",
         "voiceover_min_chars": 260,

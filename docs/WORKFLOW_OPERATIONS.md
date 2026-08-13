@@ -74,6 +74,9 @@ repair manifest 的状态为 `validated`，仍需单独上传才会变成 `succe
 
 ## 上传
 
+完整的 Bilibili 适配器契约见 `docs/BILIBILI_UPLOAD.md`。仓库不包含账号、
+Cookie、Token 或本地发布队列。
+
 ```bash
 python3 scripts/upload_video.py \
   --project projects/<topic> \

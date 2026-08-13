@@ -13,9 +13,9 @@ from datetime import datetime
 from pathlib import Path
 
 try:
-    from workflow_config import config_path, load_workflow_config
+    from workflow_config import config_path, get_config_value, load_workflow_config
 except ModuleNotFoundError:
-    from scripts.workflow_config import config_path, load_workflow_config
+    from scripts.workflow_config import config_path, get_config_value, load_workflow_config
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -76,21 +76,194 @@ def load_manifest(project):
         return path, json.load(handle)
 
 
+def ffprobe_value(path, entries, stream=None):
+    command = ["ffprobe", "-v", "error"]
+    if stream:
+        command.extend(["-select_streams", stream])
+    command.extend(["-show_entries", entries, "-of", "csv=p=0", path])
+    result = subprocess.run([str(item) for item in command], capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"ffprobe failed for {path}: {result.stderr.strip()}")
+    return result.stdout.strip()
+
+
 def execute(args):
     project = Path(args.project).expanduser().resolve()
     video = Path(args.video).expanduser().resolve()
     style_plan = Path(args.style_plan).expanduser().resolve()
     style_history = Path(args.style_history).expanduser().resolve()
+
+    # 1. 路径安全性与边界校验
     if not video.is_file():
         raise RuntimeError(f"视频不存在: {video}")
+    try:
+        video.relative_to(project)
+    except ValueError:
+        raise RuntimeError(f"非法视频路径: {video} 不在项目目录 {project} 内，拒绝上传")
+
+    if not style_plan.is_file():
+        raise RuntimeError(f"style plan 不存在: {style_plan}")
+    if not style_history.is_file():
+        raise RuntimeError(f"style history 不存在: {style_history}")
+
+    # 2. Manifest 一致性校验
     manifest_path, manifest = load_manifest(project)
     if manifest.get("status") not in {"validated", "success"}:
-        raise RuntimeError(f"manifest 状态不是 validated: {manifest.get('status')}")
+        raise RuntimeError(f"manifest 状态不是 validated/success: {manifest.get('status')}")
+    if manifest.get("project") != args.name:
+        raise RuntimeError(f"manifest 中的 project ({manifest.get('project')}) 与 --name ({args.name}) 不一致")
+
+    run_id = manifest.get("run_id")
+    if not run_id:
+        raise RuntimeError("manifest 缺少有效 run_id")
+    run_manifest_path = project / "runs" / str(run_id) / "run-manifest.json"
+    if not run_manifest_path.is_file():
+        raise RuntimeError(f"子 run-manifest 不存在: {run_manifest_path}")
+    with open(run_manifest_path, encoding="utf-8") as handle:
+        run_manifest = json.load(handle)
+    if run_manifest.get("run_id") != run_id or run_manifest.get("project") != args.name:
+        raise RuntimeError("run-manifest 与顶层 manifest 关键字段不匹配")
+
+    # 3. 校验产物路径合法性
+    outputs = manifest.get("outputs", {})
+    html_path = Path(outputs.get("html", project / "index.html")).expanduser().resolve()
+    audio_path = Path(outputs.get("final_audio", project / "audio" / "voiceover_130.wav")).expanduser().resolve()
+    for label, path in (("HTML", html_path), ("定稿音频", audio_path)):
+        try:
+            path.relative_to(project)
+        except ValueError:
+            raise RuntimeError(f"manifest {label} 路径不在项目目录内: {path}")
+    if not html_path.is_file():
+        raise RuntimeError(f"manifest HTML 产物不存在: {html_path}")
+    if not audio_path.is_file() or audio_path.name != "voiceover_130.wav":
+        raise RuntimeError(f"manifest 音频产物非法: {audio_path}")
+    policy = manifest.get("policy") or manifest.get("duration_policy")
+    if not isinstance(policy, dict):
+        raise RuntimeError("manifest 缺少当前 duration policy，禁止上传")
+    configured_limit = float(get_config_value(WORKFLOW_CONFIG, "pipeline.max_final_duration", 59.5))
+    policy_limit = policy.get("max_final_duration")
+    policy_speed = policy.get("audio_speed")
+    policy_min_chars = policy.get("voiceover_min_chars")
+    policy_max_chars = policy.get("voiceover_max_chars")
+    if policy_limit is None or float(policy_limit) != configured_limit:
+        raise RuntimeError("manifest duration policy 与当前配置不一致，禁止上传")
+    configured_speed = float(str(get_config_value(WORKFLOW_CONFIG, "pipeline.audio_speed", 1.30)))
+    configured_min_chars = int(str(get_config_value(WORKFLOW_CONFIG, "pipeline.voiceover_min_chars", 260) or 260))
+    configured_max_chars = int(str(get_config_value(WORKFLOW_CONFIG, "pipeline.voiceover_max_chars", 290) or 290))
+    if policy_speed is None or float(policy_speed) != configured_speed:
+        raise RuntimeError("manifest audio_speed 与当前配置不一致，禁止上传")
+    if policy_min_chars is None or int(policy_min_chars) != configured_min_chars:
+        raise RuntimeError("manifest voiceover_min_chars 与当前配置不一致，禁止上传")
+    if policy_max_chars is None or int(policy_max_chars) != configured_max_chars:
+        raise RuntimeError("manifest voiceover_max_chars 与当前配置不一致，禁止上传")
+
+    # 4. 重新执行成片媒体参数校验
     video_hash = sha256_file(video)
-    expected_hash = manifest.get("outputs", {}).get("final_video_sha256")
+    expected_hash = outputs.get("final_video_sha256")
     if expected_hash != video_hash:
         raise RuntimeError("最终视频 SHA256 与 manifest 不一致，禁止上传")
 
+    max_final_duration = float(get_config_value(WORKFLOW_CONFIG, "pipeline.max_final_duration", 59.5))
+    duration = float(ffprobe_value(video, "format=duration"))
+    if duration > max_final_duration:
+        raise RuntimeError(f"成片视频时长 {duration:.2f}s 超过上限 {max_final_duration:.2f}s")
+
+    resolution = ffprobe_value(video, "stream=width,height", stream="v:0").replace(",", "x")
+    if resolution != "1920x1080":
+        raise RuntimeError(f"成片分辨率必须为 1920x1080，当前为 {resolution}")
+
+    audio_streams = [
+        line for line in ffprobe_value(video, "stream=index", stream="a").splitlines() if line.strip()
+    ]
+    if len(audio_streams) != 1:
+        raise RuntimeError(f"成片必须恰好包含一条音频流，当前包含 {len(audio_streams)} 条")
+
+    # 5. 重新执行 Style Gate 校验 (显式传 --min-different 5)
+    style_guide = config_path(ROOT, WORKFLOW_CONFIG, "paths.style_guide")
+    run_checked(
+        [
+            SYS_PY,
+            ROOT / "scripts" / "validate_style.py",
+            "--plan",
+            style_plan,
+            "--history",
+            style_history,
+            "--guide",
+            style_guide,
+            "--project",
+            args.name,
+            "--html",
+            html_path,
+            "--min-different",
+            "5",
+        ],
+        timeout=60,
+    )
+
+    # 6. 重新执行 Timeline Full Gate 校验
+    dh_path = outputs.get("digital_human")
+    mv_path = outputs.get("main_video")
+    if not dh_path or not mv_path:
+        raise RuntimeError("manifest 缺少 digital_human/main_video 输出路径，禁止上传")
+    for label, raw_path in (("数字人", dh_path), ("主视频", mv_path)):
+        path = Path(raw_path).expanduser().resolve()
+        try:
+            path.relative_to(project)
+        except ValueError:
+            raise RuntimeError(f"manifest {label} 路径不在项目目录内: {path}")
+        if not path.is_file():
+            raise RuntimeError(f"manifest {label} 产物不存在: {path}")
+    run_checked(
+        [
+            SYS_PY,
+            ROOT / "scripts" / "pre_composite_check.py",
+            "--project",
+            project,
+            "--full",
+            "--audio",
+            audio_path,
+            "--digital-human",
+            dh_path,
+            "--main-video",
+            mv_path,
+            "--html",
+            html_path,
+        ],
+        timeout=60,
+    )
+
+    # 7. 重新校验口播稿及音频 F0
+    try:
+        from pipeline_daily import validate_voiceover
+    except ModuleNotFoundError:
+        from scripts.pipeline_daily import validate_voiceover
+    text_path_str = outputs.get("text") or str(project / "口播稿.txt")
+    text_file = Path(text_path_str).expanduser().resolve()
+    if not text_file.is_file():
+        raise RuntimeError(f"缺少有效口播稿: {text_file}")
+    validate_voiceover(text_file.read_text(encoding="utf-8").strip())
+
+    verify_res = run_checked([SYS_PY, ROOT / "scripts" / "whisper_f0.py", "--audio", audio_path], timeout=300)
+    try:
+        raw_out = verify_res.stdout.strip().splitlines()[-1]
+        whisper_data = json.loads(raw_out)
+        f0 = float(whisper_data["f0"])
+        text_len = len(str(whisper_data["text"]).strip())
+    except Exception as exc:
+        raise RuntimeError(f"Whisper + F0 校验输出解析失败: {exc}")
+    if text_len < 20 or not (80 <= f0 <= 180):
+        raise RuntimeError(f"音频门禁未通过: text_len={text_len}, f0={f0:.1f}Hz")
+    tts_report = manifest.get("tts_synthesis_report")
+    if not isinstance(tts_report, dict):
+        raise RuntimeError("manifest 缺少 tts_synthesis_report，禁止上传")
+    audit = tts_report.get("f0_audit")
+    content = tts_report.get("content_acceptance")
+    if not isinstance(audit, dict) or not audit.get("passed", False):
+        raise RuntimeError("TTS 逐段 F0 审计未通过或缺失，禁止上传")
+    if not isinstance(content, dict) or not content.get("passed", False):
+        raise RuntimeError("TTS 内容验收未通过或缺失，禁止上传")
+
+    # 8. 幂等 Marker 检查
     marker_path = project / "final" / "upload-success.json"
     if marker_path.is_file():
         with open(marker_path, encoding="utf-8") as handle:
@@ -98,7 +271,9 @@ def execute(args):
         if marker.get("video_sha256") == video_hash and marker.get("status") == "success":
             done_dir = Path(marker.get("done_dir", ""))
             if not done_dir.is_dir():
-                raise RuntimeError(f"上传 marker 存在但 done_dir 不存在: {done_dir}")
+                raise RuntimeError(
+                    f"上传 marker 存在但 done_dir 不存在: {done_dir}；禁止标记为 success，拒绝半成功状态"
+                )
             append_result = run_checked(
                 [
                     SYS_PY,
@@ -117,9 +292,8 @@ def execute(args):
             manifest["finished_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
             manifest["upload"] = marker
             atomic_json(manifest_path, manifest)
-            run_manifest = project / "runs" / str(manifest.get("run_id")) / "run-manifest.json"
-            if run_manifest.parent.is_dir():
-                atomic_json(run_manifest, manifest)
+            if run_manifest_path.parent.is_dir():
+                atomic_json(run_manifest_path, manifest)
             print(f"幂等命中：该视频已上传，已同步当前 manifest ({marker_path})")
             return 0
 
@@ -205,9 +379,8 @@ def execute(args):
         manifest["finished_at"] = marker["uploaded_at"]
         manifest["upload"] = marker
         atomic_json(manifest_path, manifest)
-        run_manifest = project / "runs" / str(manifest.get("run_id")) / "run-manifest.json"
-        if run_manifest.parent.is_dir():
-            atomic_json(run_manifest, manifest)
+        if run_manifest_path.parent.is_dir():
+            atomic_json(run_manifest_path, manifest)
         print(f"✅ 上传完成且已写入幂等 marker: {marker_path}")
         return 0
     finally:

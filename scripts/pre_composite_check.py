@@ -8,8 +8,20 @@ import os
 import re
 import subprocess
 import sys
+from pathlib import Path
 
-MAX_FINAL_DURATION = 59.5
+ROOT = Path(__file__).resolve().parents[1]
+try:
+    from workflow_config import get_config_value, load_workflow_config
+except ModuleNotFoundError:
+    from scripts.workflow_config import get_config_value, load_workflow_config
+
+try:
+    MAX_FINAL_DURATION = float(
+        get_config_value(load_workflow_config(ROOT), "pipeline.max_final_duration", 59.5) or 59.5
+    )
+except (TypeError, ValueError):
+    MAX_FINAL_DURATION = 59.5
 
 
 def ffprobe_duration(path):

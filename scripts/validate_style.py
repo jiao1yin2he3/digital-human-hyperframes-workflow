@@ -208,6 +208,11 @@ def validate_html(plan, html_path):
         errors.append("HTML 必须从项目内 vendor/gsap.min.js 加载 GSAP")
     if len(re.findall(r'class=["\'][^"\']*\bscene\b', html)) < 3:
         errors.append("HTML 至少需要 3 个独立 scene")
+
+    scripts_content = "".join(re.findall(r"<script\b[^>]*>(.*?)</script>", html, flags=re.DOTALL))
+    if not re.search(r"scene|scenes|sceneTimes|\.scene|#scene", scripts_content, flags=re.IGNORECASE):
+        errors.append("HTML 缺少 JS 场景切换逻辑（仅依赖 CSS，后续场景无法正常显示）")
+
     return errors
 
 
@@ -223,7 +228,7 @@ def execute(args):
             errors.append(comparison_error)
     else:
         comparisons = []
-    if args.html and not errors:
+    if args.html:
         errors.extend(validate_html(plan, args.html))
 
     report = {

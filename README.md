@@ -90,6 +90,11 @@ visibility control.
 - `STYLE_HISTORY.example.md` is a sanitized starting point for the local
   `STYLE_HISTORY.md` used by the style diversity gate.
 - `.github/workflows/ci.yml` runs the dependency-light test and demo validation.
+- `docs/ARCHITECTURE.md` explains the complete end-to-end flow.
+- `docs/DEPENDENCIES.md` lists external AI engines, models, and hardware-specific setup.
+- `docs/BILIBILI_UPLOAD.md` defines the optional Bilibili queue adapter contract.
+- `requirements-workflow.txt` lists the Python packages used by the orchestration layer.
+- `docs/DAILY_AGENT_PROMPT.template.md` is a sanitized automation prompt template.
 
 `workflow.local.yaml`, media assets, generated project outputs, validation
 artifacts, and private publishing markers are ignored by Git.
@@ -122,6 +127,10 @@ Do not commit:
 - reference audio, avatars, generated audio/video/images
 - `projects/` with real production topics or upload markers
 - cookies, tokens, queue data, or account-specific automation notes
+
+The repository is complete at the workflow-orchestration level. Third-party
+engines and model weights are intentionally installed separately and connected
+through `workflow.local.yaml`.
 
 ## License
 

@@ -5,6 +5,7 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+*.lock
 
 # Local heavyweight engines, checkpoints, and historical artifacts.
 archive/
@@ -30,7 +31,6 @@ node_modules/
 venv/
 *-venv/
 runtime/
-runtime/*.lock
 validation/
 workflow.local.yaml
 STYLE_HISTORY.md

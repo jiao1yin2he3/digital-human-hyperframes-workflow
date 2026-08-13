@@ -25,6 +25,11 @@ from scripts.upload_video import parse_args as parse_upload_args
 from scripts.validate_style import compare_history, validate_guide, validate_html, validate_schema
 from scripts.workflow_config import config_path, load_workflow_config
 import scripts.doctor as doctor
+import scripts.append_style_history as append_style
+import scripts.repair_run as repair_run
+import scripts.upload_video as upload_video
+import scripts.validate_style as validate_style
+from scripts.pipeline_daily import TTS_INTERVAL_SILENCE
 
 
 DIMENSIONS = {
@@ -67,6 +72,7 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(AUDIO_SPEED, 1.30)
         self.assertEqual(MAX_FINAL_DURATION, 59.5)
         self.assertEqual((VOICEOVER_MIN_CHARS, VOICEOVER_MAX_CHARS), (260, 290))
+        self.assertEqual(timeline_check.MAX_FINAL_DURATION, 59.5)
 
     def test_voiceover_character_policy_uses_effective_characters(self):
         validate_voiceover("中" * 260)
@@ -291,7 +297,7 @@ class StyleTests(unittest.TestCase):
         attributes = " ".join(
             f'data-style-{key.replace("_", "-")}="{value}"' for key, value in DIMENSIONS.items()
         )
-        html = f'<script src="vendor/gsap.min.js"></script><div id="stage" {attributes}><audio id="main-voiceover"></audio><section class="scene"></section><section class="scene"></section><section class="scene"></section></div><script>const captions=[];</script>'
+        html = f'<script src="vendor/gsap.min.js"></script><div id="stage" {attributes}><audio id="main-voiceover"></audio><section class="scene"></section><section class="scene"></section><section class="scene"></section></div><script>const captions=[]; const scenes=document.querySelectorAll(".scene");</script>'
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "index.html"
             path.write_text(html, encoding="utf-8")
@@ -307,24 +313,244 @@ class ConfigTests(unittest.TestCase):
 
     def test_doctor_hyperframes_version_matches_package(self):
         ok, label, _target, detail = doctor.check_hyperframes_version(doctor.load_workflow_config(doctor.ROOT))
-        if detail == "binary missing":
-            self.skipTest("HyperFrames is an optional local runtime dependency")
         self.assertTrue(ok, f"{label}: {detail}")
 
 
-class UploadTests(unittest.TestCase):
-    def test_upload_is_not_public_by_default(self):
-        argv = [
-            "upload_video.py",
-            "--project", "projects/demo01",
-            "--video", "projects/demo01/final_video.mp4",
-            "--name", "demo01",
-            "--style-plan", "projects/demo01/STYLE_PLAN.yaml",
-            "--style-history", "STYLE_HISTORY.md",
-            "--title", "Demo",
+class ExtraRegressionTests(unittest.TestCase):
+    def test_doctor_allow_resume_check(self):
+        ok_res, label, target, detail = doctor.check_config_allow_resume({"pipeline": {"allow_resume": False}})
+        self.assertTrue(ok_res)
+        ok_fail, label, target, detail = doctor.check_config_allow_resume({"pipeline": {"allow_resume": True}})
+        self.assertFalse(ok_fail)
+
+    def test_caption_map_short_audio_reproduction(self):
+        whisper_data = [
+            {"start": 0.0, "end": 0.3, "text": "快"},
+            {"start": 0.3, "end": 0.4, "text": "语"},
         ]
-        with patch("sys.argv", argv):
-            self.assertFalse(parse_upload_args().public)
+        captions = map_captions(whisper_data, ["快", "语"])
+        self.assertEqual(len(captions), 2)
+        for cap in captions:
+            self.assertLess(cap["start"], cap["end"])
+            self.assertLessEqual(cap["end"], 0.4)
+
+    def test_caption_map_empty_whisper_raises(self):
+        with self.assertRaises(ValueError):
+            map_captions([], ["句一", "句二"])
+
+    def test_caption_map_multi_sentence_same_segment(self):
+        whisper_data = [{"start": 0.0, "end": 2.0, "text": "第一句第二句"}]
+        captions = map_captions(whisper_data, ["第一句", "第二句"])
+        self.assertEqual(len(captions), 2)
+        for cap in captions:
+            self.assertLess(cap["start"], cap["end"])
+            self.assertLessEqual(cap["end"], 2.0)
+
+    def test_caption_map_too_short_audio_raises(self):
+        whisper_data = [{"start": 0.0, "end": 0.02, "text": "短"}]
+        sentences = [f"句子{i}" for i in range(10)]
+        with self.assertRaises(ValueError):
+            map_captions(whisper_data, sentences)
+
+    def test_bigtext_template_static_scene_switching(self):
+        template_path = Path(__file__).resolve().parents[1] / "templates" / "bigtext_template.html"
+        content = template_path.read_text(encoding="utf-8")
+        self.assertNotIn("sceneTimes=[0,12,24,36]", content)
+        self.assertNotIn("delay:(sceneTimes[i]-12)*1000", content)
+        self.assertIn("stage.dataset.duration", content)
+
+    def test_blank_template_static_scene_switching(self):
+        template_path = Path(__file__).resolve().parents[1] / "templates" / "blank_template.html"
+        content = template_path.read_text(encoding="utf-8")
+        self.assertIn("querySelectorAll('.scene')", content)
+        self.assertIn("dataset", content)
+
+    def test_validate_style_html_gate_runs_even_when_schema_fails(self):
+        plan = valid_plan()
+        plan["palette"] = "replace-me"
+        with tempfile.TemporaryDirectory() as directory:
+            html_file = Path(directory) / "index.html"
+            html_file.write_text(
+                '<script src="vendor/gsap.min.js"></script><div id="stage"><audio id="main-voiceover"></audio><section class="scene"></section><section class="scene"></section></div><script>const captions=[]; const scenes=document.querySelectorAll(".scene");</script>',
+                encoding="utf-8",
+            )
+            args = SimpleNamespace(
+                plan=str(Path(directory) / "plan.yaml"),
+                history=str(Path(directory) / "history.md"),
+                project="demo01",
+                html=str(html_file),
+                min_different=5,
+                guide=str(config_path(Path(__file__).resolve().parents[1], load_workflow_config(Path(__file__).resolve().parents[1]), "paths.style_guide")),
+                report=None,
+            )
+            Path(args.plan).write_text(json.dumps(plan), encoding="utf-8")
+            Path(args.history).write_text("# History\n", encoding="utf-8")
+            errors = validate_html(plan, html_file)
+            self.assertIn("HTML 至少需要 3 个独立 scene", errors)
+            exit_code = validate_style.execute(args)
+            self.assertEqual(exit_code, 1)
+
+    def test_validate_html_rejects_static_css_only_scenes(self):
+        plan = valid_plan()
+        html = '<script src="vendor/gsap.min.js"></script><div id="stage"><audio id="main-voiceover"></audio><section class="scene"></section><section class="scene"></section><section class="scene"></section></div><script>const captions=[];</script>'
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "index.html"
+            path.write_text(html, encoding="utf-8")
+            errors = validate_html(plan, path)
+            self.assertIn("HTML 缺少 JS 场景切换逻辑（仅依赖 CSS，后续场景无法正常显示）", errors)
+
+    def test_upload_rejects_external_video_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory) / "demo"
+            project.mkdir()
+            ext_video = Path(directory) / "external.mp4"
+            ext_video.write_bytes(b"vid")
+            args = SimpleNamespace(
+                project=str(project),
+                video=str(ext_video),
+                name="demo",
+                style_plan=str(project / "plan.yaml"),
+                style_history=str(project / "history.md"),
+                title="title",
+                desc="",
+                dynamic="",
+                tag="tag",
+                public=False,
+                reuse_pipeline_lock=True,
+            )
+            with self.assertRaises(RuntimeError) as ctx:
+                upload_video.execute(args)
+            self.assertIn("不在项目目录", str(ctx.exception))
+
+    def test_upload_rejects_missing_done_dir_in_marker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory) / "demo"
+            project.mkdir()
+            video = project / "final_video.mp4"
+            video.write_bytes(b"vid")
+            (project / "plan.yaml").write_text("project: demo\n", encoding="utf-8")
+            (project / "history.md").write_text("# History\n", encoding="utf-8")
+            (project / "index.html").write_text("<html></html>", encoding="utf-8")
+            (project / "voiceover_130.wav").write_bytes(b"audio")
+            (project / "口播稿.txt").write_text("中" * 270, encoding="utf-8")
+            vhash = upload_video.sha256_file(video)
+
+            runs_dir = project / "runs" / "run1"
+            runs_dir.mkdir(parents=True)
+            manifest = {
+                "schema_version": 1,
+                "run_id": "run1",
+                "project": "demo",
+                "status": "validated",
+                "outputs": {
+                    "html": str(project / "index.html"),
+                    "final_audio": str(project / "voiceover_130.wav"),
+                    "final_video_sha256": vhash,
+                    "digital_human": str(project / "digital_human.mp4"),
+                    "main_video": str(project / "main_video.mp4"),
+                },
+            }
+            (project / "digital_human.mp4").write_bytes(b"digital_human")
+            (project / "main_video.mp4").write_bytes(b"main_video")
+            (project / "run-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            (runs_dir / "run-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+            final_dir = project / "final"
+            final_dir.mkdir()
+            marker = {
+                "status": "success",
+                "video_sha256": vhash,
+                "done_dir": str(Path(directory) / "non_existent_done"),
+            }
+            manifest["policy"] = {
+                "audio_speed": 1.30,
+                "max_final_duration": 59.5,
+                "end_padding_seconds": 1.2,
+                "voiceover_min_chars": 260,
+                "voiceover_max_chars": 290,
+            }
+            manifest["tts_synthesis_report"] = {
+                "f0_audit": {"passed": True},
+                "content_acceptance": {"passed": True},
+            }
+            (project / "run-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            (runs_dir / "run-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            (final_dir / "upload-success.json").write_text(json.dumps(marker), encoding="utf-8")
+
+            args = SimpleNamespace(
+                project=str(project),
+                video=str(video),
+                name="demo",
+                style_plan=str(project / "plan.yaml"),
+                style_history=str(project / "history.md"),
+                title="title",
+                desc="",
+                dynamic="",
+                tag="tag",
+                public=False,
+                reuse_pipeline_lock=True,
+            )
+            def fake_ffprobe(path, entries, stream=None):
+                if "duration" in entries:
+                    return "50.0"
+                if "width" in entries:
+                    return "1920,1080"
+                return "0"
+
+            with patch("scripts.upload_video.ffprobe_value", side_effect=fake_ffprobe), \
+                 patch("scripts.upload_video.run_checked", return_value=SimpleNamespace(stdout='{"text":"转写文本内容足够长测试123456789","f0":100}')), \
+                 patch("scripts.pipeline_daily.validate_voiceover"):
+                with self.assertRaises(RuntimeError) as ctx:
+                    upload_video.execute(args)
+                self.assertIn("done_dir 不存在", str(ctx.exception))
+
+    def test_upload_rejects_manifest_without_current_policy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory) / "demo"
+            project.mkdir()
+            video = project / "final_video.mp4"
+            video.write_bytes(b"vid")
+            (project / "plan.yaml").write_text("project: demo\n", encoding="utf-8")
+            (project / "history.md").write_text("# History\n", encoding="utf-8")
+            (project / "index.html").write_text("<html></html>", encoding="utf-8")
+            audio = project / "voiceover_130.wav"
+            audio.write_bytes(b"audio")
+            run_dir = project / "runs" / "run1"
+            run_dir.mkdir(parents=True)
+            manifest = {
+                "run_id": "run1",
+                "project": "demo",
+                "status": "validated",
+                "outputs": {
+                    "html": str(project / "index.html"),
+                    "final_audio": str(audio),
+                    "final_video_sha256": upload_video.sha256_file(video),
+                },
+            }
+            (project / "run-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            (run_dir / "run-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            args = SimpleNamespace(
+                project=str(project), video=str(video), name="demo",
+                style_plan=str(project / "plan.yaml"), style_history=str(project / "history.md"),
+                title="title", desc="", dynamic="", tag="tag", public=False,
+                reuse_pipeline_lock=True,
+            )
+            with self.assertRaises(RuntimeError) as ctx:
+                upload_video.execute(args)
+            self.assertIn("duration policy", str(ctx.exception))
+
+    def test_append_style_history_lock_path_name(self):
+        with tempfile.TemporaryDirectory() as directory:
+            history = Path(directory) / "STYLE_HISTORY.md"
+            plan = Path(directory) / "STYLE_PLAN.yaml"
+            plan_data = {
+                "project": "testproj",
+                **{dim: "test-slug" for dim in append_style.DIMENSIONS},
+            }
+            plan.write_text(json.dumps(plan_data), encoding="utf-8")
+            append_style.append_history(plan, history)
+            self.assertTrue((Path(directory) / "STYLE_HISTORY.md.lock").is_file())
+            self.assertFalse((Path(directory) / "STYLE_HISTORY.md.lock.lock").is_file())
 
 
 if __name__ == "__main__":

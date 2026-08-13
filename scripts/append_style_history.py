@@ -49,7 +49,7 @@ def append_history(plan_path, history_path):
     plan = load_plan(plan_path)
     history_path = Path(history_path)
     history_path.parent.mkdir(parents=True, exist_ok=True)
-    lock_path = history_path.with_suffix(history_path.suffix + ".lock")
+    lock_path = Path(str(history_path) + ".lock")
     with open(lock_path, "a+", encoding="utf-8") as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
         content = history_path.read_text(encoding="utf-8") if history_path.exists() else "# HyperFrames style history\n"

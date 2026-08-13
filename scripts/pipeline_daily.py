@@ -27,9 +27,9 @@ try:
 except ModuleNotFoundError:
     from scripts.workflow_config import config_path, get_config_value, load_workflow_config
 try:
-    from tts_quality import DEFAULT_NEWS_EMOTION_TEXT
+    from tts_quality import DEFAULT_NEWS_EMOTION_TEXT, effective_voiceover_chars
 except ModuleNotFoundError:
-    from scripts.tts_quality import DEFAULT_NEWS_EMOTION_TEXT
+    from scripts.tts_quality import DEFAULT_NEWS_EMOTION_TEXT, effective_voiceover_chars
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -59,9 +59,9 @@ try:
 except (TypeError, ValueError):
     MAX_FINAL_DURATION = 59.5
 try:
-    TTS_INTERVAL_SILENCE = max(0.0, float(get_config_value(WORKFLOW_CONFIG, "pipeline.tts_interval_silence", 0.2)))
+    TTS_INTERVAL_SILENCE = max(0.0, float(get_config_value(WORKFLOW_CONFIG, "pipeline.tts_interval_silence", 0.10)))
 except (TypeError, ValueError):
-    TTS_INTERVAL_SILENCE = 0.2
+    TTS_INTERVAL_SILENCE = 0.10
 try:
     TTS_REQUIRED_KEYWORDS = [
         item.strip()
@@ -71,10 +71,13 @@ try:
 except (TypeError, ValueError, AttributeError):
     TTS_REQUIRED_KEYWORDS = []
 try:
-    TTS_EMO_ALPHA = float(get_config_value(WORKFLOW_CONFIG, "pipeline.tts_emo_alpha", 0.6))
+    TTS_EMO_ALPHA = float(get_config_value(WORKFLOW_CONFIG, "pipeline.tts_emo_alpha", 0.4) or 0.4)
 except (TypeError, ValueError):
-    TTS_EMO_ALPHA = 0.6
-TTS_EMO_TEXT = str(get_config_value(WORKFLOW_CONFIG, "pipeline.tts_emo_text", "") or "").strip() or None
+    TTS_EMO_ALPHA = 0.4
+TTS_EMO_TEXT = str(
+    get_config_value(WORKFLOW_CONFIG, "pipeline.tts_emo_text", DEFAULT_NEWS_EMOTION_TEXT)
+    or DEFAULT_NEWS_EMOTION_TEXT
+).strip() or DEFAULT_NEWS_EMOTION_TEXT
 TTS_EMO_AUDIO_PROMPT = str(get_config_value(WORKFLOW_CONFIG, "pipeline.tts_emo_audio_prompt", "") or "").strip() or None
 TTS_USE_EMO_TEXT = bool(get_config_value(WORKFLOW_CONFIG, "pipeline.tts_use_emo_text", True))
 TTS_USE_RANDOM = bool(get_config_value(WORKFLOW_CONFIG, "pipeline.tts_use_random", False))
@@ -466,7 +469,7 @@ def validate_voiceover(text):
     sentences = [item for item in re.split(r"[。！？\n]", text) if item.strip()]
     exclamation_count = text.count("！") + text.count("!")
     rate = exclamation_count / len(sentences) if sentences else 0
-    effective_chars = len(re.sub(r"[^0-9a-zA-Z\u4e00-\u9fff]", "", text))
+    effective_chars = effective_voiceover_chars(text)
     if rate > 0.15:
         raise PipelineError(
             f"口播稿感叹号过多: {exclamation_count}/{len(sentences)} ({rate * 100:.0f}% > 15%)"
@@ -578,6 +581,8 @@ def execute(args):
                 args.name,
                 "--html",
                 html_source,
+                "--min-different",
+                "5",
             ],
         )
         style_data = load_style_plan(style_plan)
@@ -695,6 +700,13 @@ def execute(args):
         pipeline.record_output("final_audio", speed_wav)
         pipeline.manifest["audio_speed"] = AUDIO_SPEED
         pipeline.manifest["max_final_duration"] = MAX_FINAL_DURATION
+        pipeline.manifest["policy"] = {
+            "audio_speed": AUDIO_SPEED,
+            "max_final_duration": MAX_FINAL_DURATION,
+            "end_padding_seconds": END_PADDING_SECONDS,
+            "voiceover_min_chars": VOICEOVER_MIN_CHARS,
+            "voiceover_max_chars": VOICEOVER_MAX_CHARS,
+        }
         duration = pipeline.ffprobe_duration(speed_wav)
         render_duration = duration + END_PADDING_SECONDS
         audio_dir = pipeline.project_dir / "audio"
