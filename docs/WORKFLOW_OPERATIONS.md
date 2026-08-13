@@ -35,7 +35,7 @@ python3 scripts/pipeline_daily.py \
 
 ## 配置
 
-全局时长策略：`audio_speed=1.30`，定稿文件为 `voiceover_130.wav`；口播稿有效字符为 260–290；最终视频硬上限 59.5 秒。TTS 加速后先执行 duration-gate，超限在 SadTalker 前停止，最终成片和时间轴校验再次检查上限。规则调整仅影响后续新运行，既有项目不自动重渲染。
+全局时长策略：`audio_speed=1.30`，定稿文件为 `voiceover_130.wav`；口播稿有效字符为 260-290；最终视频硬上限 59.5 秒。TTS 加速后先执行 duration-gate，超限在 SadTalker 前停止。最终成片还必须接近 `final_audio_duration + end_padding_seconds`，默认容差 0.75 秒；只低于 59.5 秒但长度和音频合同不一致，不算通过。
 
 - 本机路径默认来自 `workflow.example.yaml` 中的约定。
 - 需要覆盖时复制为 `workflow.local.yaml`，或设置 `HFW_CONFIG=/path/to/workflow.yaml`。
@@ -51,9 +51,16 @@ python3 scripts/pipeline_daily.py \
   --resume
 ```
 
-`--resume` 只在显式传入时启用，会复用项目目录中已存在且非空的音频、字幕、数字人、主视频、投影层或最终合成视频。复用产物仍会进入后续时间轴、音频、分辨率和视觉门禁。
+`--resume` 只在显式传入时启用。流水线会在 manifest 中写入：
 
-适用场景：TTS、SadTalker 或 HyperFrames 已成功，但后续合成或视觉门禁失败。输入文案、头像、参考音频或 HTML 大改后，应全量重跑。
+- `resume_contract`: reference audio、avatar、HTML、script、STYLE_PLAN、STYLE_HISTORY 的 SHA256，加上关键策略参数。
+- `input_fingerprints`: 本次输入文件指纹。
+- `output_fingerprints`: 已生成产物指纹。
+- `tts_synthesis_report`: TTS 分段 F0 与 Whisper 内容验收报告。
+
+只有旧 manifest 的合同、输入指纹、策略和被复用产物指纹都匹配时，才允许复用音频、字幕、数字人、主视频、投影层或最终合成视频。复用产物仍会进入后续时间轴、音频、分辨率、视觉和上传门禁。
+
+适用场景：TTS、SadTalker 或 HyperFrames 已成功，但后续合成或视觉门禁失败。输入文案、头像、参考音频、HTML、STYLE_PLAN、STYLE_HISTORY 或策略参数变化后，应全量重跑。
 
 ## 修复运行
 
@@ -70,7 +77,7 @@ python3 scripts/repair_run.py \
   --style-plan projects/<topic>/STYLE_PLAN.yaml
 ```
 
-repair manifest 的状态为 `validated`，仍需单独上传才会变成 `success`。
+repair 会重新校验 style、timeline、visual、口播稿、音频 F0、TTS 报告、最终视频 SHA256、分辨率、单音轨、59.5 秒上限，以及最终视频是否接近 `audio_duration + end_padding_seconds`。repair manifest 的状态为 `validated`，仍需单独上传才会变成 `success`。
 
 ## 上传
 
@@ -87,7 +94,7 @@ python3 scripts/upload_video.py \
   --title '<标题>'
 ```
 
-上传使用项目名和视频 SHA256 生成确定性 job name；相同视频再次运行会直接命中 `final/upload-success.json`。
+上传使用项目名和视频 SHA256 生成确定性 job name；相同视频再次运行会直接命中 `final/upload-success.json`。上传前会重新校验 manifest policy、`outputs.text`、TTS 报告、视频 SHA256、`outputs.duration` 和目标时长，避免上传过期或手工截断的产物。
 
 ## 风格门禁
 

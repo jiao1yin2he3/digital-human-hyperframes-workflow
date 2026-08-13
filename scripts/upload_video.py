@@ -145,13 +145,17 @@ def execute(args):
     policy_speed = policy.get("audio_speed")
     policy_min_chars = policy.get("voiceover_min_chars")
     policy_max_chars = policy.get("voiceover_max_chars")
+    policy_end_padding = policy.get("end_padding_seconds")
     if policy_limit is None or float(policy_limit) != configured_limit:
         raise RuntimeError("manifest duration policy 与当前配置不一致，禁止上传")
     configured_speed = float(str(get_config_value(WORKFLOW_CONFIG, "pipeline.audio_speed", 1.30)))
+    configured_end_padding = float(str(get_config_value(WORKFLOW_CONFIG, "pipeline.end_padding_seconds", 1.2)))
     configured_min_chars = int(str(get_config_value(WORKFLOW_CONFIG, "pipeline.voiceover_min_chars", 260) or 260))
     configured_max_chars = int(str(get_config_value(WORKFLOW_CONFIG, "pipeline.voiceover_max_chars", 290) or 290))
     if policy_speed is None or float(policy_speed) != configured_speed:
         raise RuntimeError("manifest audio_speed 与当前配置不一致，禁止上传")
+    if policy_end_padding is None or float(policy_end_padding) != configured_end_padding:
+        raise RuntimeError("manifest end_padding_seconds 与当前配置不一致，禁止上传")
     if policy_min_chars is None or int(policy_min_chars) != configured_min_chars:
         raise RuntimeError("manifest voiceover_min_chars 与当前配置不一致，禁止上传")
     if policy_max_chars is None or int(policy_max_chars) != configured_max_chars:
@@ -165,6 +169,16 @@ def execute(args):
 
     max_final_duration = float(get_config_value(WORKFLOW_CONFIG, "pipeline.max_final_duration", 59.5))
     duration = float(ffprobe_value(video, "format=duration"))
+    manifest_duration = outputs.get("duration")
+    if manifest_duration is None or abs(float(manifest_duration) - duration) >= 0.25:
+        raise RuntimeError("最终视频实际时长与 manifest outputs.duration 不一致，禁止上传")
+    audio_duration = float(ffprobe_value(audio_path, "format=duration"))
+    target_final_duration = audio_duration + configured_end_padding
+    if abs(duration - target_final_duration) >= 0.75:
+        raise RuntimeError(
+            f"成片视频时长 {duration:.2f}s 与目标 {target_final_duration:.2f}s "
+            f"(音频 {audio_duration:.2f}s + 尾部缓冲 {configured_end_padding:.2f}s) 差值超过 0.75s"
+        )
     if duration > max_final_duration:
         raise RuntimeError(f"成片视频时长 {duration:.2f}s 超过上限 {max_final_duration:.2f}s")
 
@@ -237,8 +251,14 @@ def execute(args):
         from pipeline_daily import validate_voiceover
     except ModuleNotFoundError:
         from scripts.pipeline_daily import validate_voiceover
-    text_path_str = outputs.get("text") or str(project / "口播稿.txt")
+    text_path_str = outputs.get("text")
+    if not text_path_str:
+        raise RuntimeError("manifest outputs 缺少 text，禁止上传")
     text_file = Path(text_path_str).expanduser().resolve()
+    try:
+        text_file.relative_to(project)
+    except ValueError as exc:
+        raise RuntimeError(f"manifest 口播稿路径不在项目目录内: {text_file}") from exc
     if not text_file.is_file():
         raise RuntimeError(f"缺少有效口播稿: {text_file}")
     validate_voiceover(text_file.read_text(encoding="utf-8").strip())

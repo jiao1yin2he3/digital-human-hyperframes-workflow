@@ -12,10 +12,12 @@ from scripts.pipeline_daily import (
     VOICEOVER_MIN_CHARS,
     AUDIO_SPEED,
     PipelineError,
+    build_resume_contract,
     parse_args as parse_pipeline_args,
     prepare_sadtalker_source_image,
     update_html,
     validate_voiceover,
+    validate_resume_contract,
     validate_name,
     wait_for_stable_mp4,
 )
@@ -81,6 +83,29 @@ class PipelineTests(unittest.TestCase):
             validate_voiceover("中" * 259)
         with self.assertRaises(PipelineError):
             validate_voiceover("中" * 291)
+
+    def test_resume_contract_rejects_changed_input(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = {}
+            for name in ("ref.wav", "photo.jpg", "index.html", "text.txt", "STYLE_PLAN.yaml", "STYLE_HISTORY.md"):
+                path = root / name
+                path.write_text(f"{name}-v1", encoding="utf-8")
+                paths[name] = path
+            inputs = {
+                "reference_audio": paths["ref.wav"],
+                "photo": paths["photo.jpg"],
+                "html": paths["index.html"],
+                "text": paths["text.txt"],
+                "style_plan": paths["STYLE_PLAN.yaml"],
+                "style_history": paths["STYLE_HISTORY.md"],
+            }
+            contract = build_resume_contract(inputs, DIMENSIONS)
+            validate_resume_contract({"resume_contract": contract}, contract)
+            paths["text.txt"].write_text("changed", encoding="utf-8")
+            changed = build_resume_contract(inputs, DIMENSIONS)
+            with self.assertRaises(PipelineError):
+                validate_resume_contract({"resume_contract": contract}, changed)
 
     def test_update_html_targets_only_stage_and_audio(self):
         html = """<div id="stage" data-duration="1"><audio src="old.wav" data-duration="1" id="main-voiceover"></audio><div data-duration="9"></div></div><script>const captions=[]; gsap.to('.x', {duration: 0.25});</script>"""
@@ -444,10 +469,12 @@ class ExtraRegressionTests(unittest.TestCase):
                 "status": "validated",
                 "outputs": {
                     "html": str(project / "index.html"),
+                    "text": str(project / "口播稿.txt"),
                     "final_audio": str(project / "voiceover_130.wav"),
                     "final_video_sha256": vhash,
                     "digital_human": str(project / "digital_human.mp4"),
                     "main_video": str(project / "main_video.mp4"),
+                    "duration": 50.0,
                 },
             }
             (project / "digital_human.mp4").write_bytes(b"digital_human")
@@ -492,6 +519,8 @@ class ExtraRegressionTests(unittest.TestCase):
             )
             def fake_ffprobe(path, entries, stream=None):
                 if "duration" in entries:
+                    if Path(path).name == "voiceover_130.wav":
+                        return "48.8"
                     return "50.0"
                 if "width" in entries:
                     return "1920,1080"
@@ -538,6 +567,75 @@ class ExtraRegressionTests(unittest.TestCase):
             with self.assertRaises(RuntimeError) as ctx:
                 upload_video.execute(args)
             self.assertIn("duration policy", str(ctx.exception))
+
+    def test_upload_rejects_final_duration_mismatch_with_audio_padding(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory) / "demo"
+            project.mkdir()
+            video = project / "final_video.mp4"
+            video.write_bytes(b"vid")
+            audio = project / "voiceover_130.wav"
+            audio.write_bytes(b"audio")
+            html = project / "index.html"
+            html.write_text("<html></html>", encoding="utf-8")
+            text = project / "口播稿.txt"
+            text.write_text("中" * 270, encoding="utf-8")
+            style_plan = project / "plan.yaml"
+            style_history = project / "history.md"
+            style_plan.write_text("project: demo\n", encoding="utf-8")
+            style_history.write_text("# History\n", encoding="utf-8")
+            dh = project / "digital_human.mp4"
+            mv = project / "main_video.mp4"
+            dh.write_bytes(b"dh")
+            mv.write_bytes(b"mv")
+            run_dir = project / "runs" / "run1"
+            run_dir.mkdir(parents=True)
+            manifest = {
+                "schema_version": 1,
+                "run_id": "run1",
+                "project": "demo",
+                "status": "validated",
+                "policy": {
+                    "audio_speed": 1.30,
+                    "max_final_duration": 59.5,
+                    "end_padding_seconds": 1.2,
+                    "voiceover_min_chars": 260,
+                    "voiceover_max_chars": 290,
+                },
+                "outputs": {
+                    "html": str(html),
+                    "text": str(text),
+                    "final_audio": str(audio),
+                    "final_video_sha256": upload_video.sha256_file(video),
+                    "digital_human": str(dh),
+                    "main_video": str(mv),
+                    "duration": 50.0,
+                },
+                "tts_synthesis_report": {
+                    "f0_audit": {"passed": True},
+                    "content_acceptance": {"passed": True},
+                },
+            }
+            (project / "run-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            (run_dir / "run-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            args = SimpleNamespace(
+                project=str(project), video=str(video), name="demo",
+                style_plan=str(style_plan), style_history=str(style_history),
+                title="title", desc="", dynamic="", tag="tag", public=False,
+                reuse_pipeline_lock=True,
+            )
+
+            def fake_ffprobe(path, entries, stream=None):
+                if "duration" in entries:
+                    return "48.0" if Path(path).name == "voiceover_130.wav" else "50.0"
+                if "width" in entries:
+                    return "1920,1080"
+                return "0"
+
+            with patch("scripts.upload_video.ffprobe_value", side_effect=fake_ffprobe):
+                with self.assertRaises(RuntimeError) as ctx:
+                    upload_video.execute(args)
+            self.assertIn("音频 48.00s + 尾部缓冲 1.20s", str(ctx.exception))
 
     def test_append_style_history_lock_path_name(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -13,9 +13,9 @@ from datetime import datetime
 from pathlib import Path
 
 try:
-    from workflow_config import config_path, load_workflow_config
+    from workflow_config import config_path, get_config_value, load_workflow_config
 except ModuleNotFoundError:
-    from scripts.workflow_config import config_path, load_workflow_config
+    from scripts.workflow_config import config_path, get_config_value, load_workflow_config
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -295,6 +295,12 @@ def main():
     )
 
     duration = float(ffprobe_value(paths["final_video"], "format=duration"))
+    target_final_duration = audio_duration + end_padding_seconds
+    if abs(duration - target_final_duration) >= 0.75:
+        raise RuntimeError(
+            f"成片视频时长 {duration:.2f}s 与目标 {target_final_duration:.2f}s "
+            f"(音频 {audio_duration:.2f}s + 尾部缓冲 {end_padding_seconds:.2f}s) 差值超过 0.75s"
+        )
     if duration > max_final_duration:
         raise RuntimeError(f"成片视频时长 {duration:.2f}s 超过上限 {max_final_duration:.2f}s")
     resolution = ffprobe_value(paths["final_video"], "stream=width,height", stream="v:0").replace(",", "x")
@@ -323,6 +329,7 @@ def main():
             "effective_chars": eff_chars,
             "whisper_f0": f0,
             "whisper_text_len": len(whisper_text),
+            "target_final_duration": target_final_duration,
         },
         "steps": steps,
         "outputs": {
@@ -336,6 +343,7 @@ def main():
             "visual_report": str(visual_report),
             "final_video_sha256": sha256_file(paths["final_video"]),
             "duration": duration,
+            "target_final_duration": target_final_duration,
             "resolution": resolution,
             "audio_streams": len(audio_streams),
         },

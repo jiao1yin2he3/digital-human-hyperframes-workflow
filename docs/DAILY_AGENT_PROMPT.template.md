@@ -15,7 +15,7 @@
 2. 不得打印或提交 Cookie、Token、密钥、账号数据、模型权重或真实媒体。
 3. 不得修改校验器来绕过失败。
 4. 默认不上传；只有 `{UPLOAD_POLICY}` 明确允许时才使用 `--upload`。
-5. 输入或 HTML 变化后必须全量重跑；只有输入未变更且前序产物通过校验时才使用 `--resume`。
+5. 输入、STYLE_PLAN、STYLE_HISTORY、HTML、头像、参考音频或策略变化后必须全量重跑；只有 manifest 的 `resume_contract` 和产物指纹匹配时才使用 `--resume`。
 
 ## 运行顺序
 
@@ -40,8 +40,9 @@ python3 scripts/pipeline_daily.py \
 `output_tail`，只修复输入或本期 HTML。手工替换产物后使用
 `scripts/repair_run.py` 重新生成 `validated` manifest。
 
-只有 manifest 为 `validated`，最终视频 SHA256 与 manifest 一致，且时间轴、
-音频、分辨率和视觉门禁全部通过时，才可以上传。
+只有 manifest 为 `validated`，最终视频 SHA256 与 manifest 一致，`tts_synthesis_report`
+通过，`outputs.text` 存在，成片时长接近 `final_audio_duration + end_padding_seconds`，
+且时间轴、音频、分辨率和视觉门禁全部通过时，才可以上传。
 
 ## 汇报
 

@@ -138,6 +138,59 @@ def sha256_file(path):
     return digest.hexdigest()
 
 
+def file_fingerprint(path):
+    path = Path(path).expanduser().resolve()
+    stat = path.stat()
+    return {
+        "path": str(path),
+        "sha256": sha256_file(path),
+        "size": stat.st_size,
+        "mtime_ns": stat.st_mtime_ns,
+    }
+
+
+def build_pipeline_policy():
+    return {
+        "audio_speed": AUDIO_SPEED,
+        "max_final_duration": MAX_FINAL_DURATION,
+        "end_padding_seconds": END_PADDING_SECONDS,
+        "end_video_fade_seconds": END_VIDEO_FADE_SECONDS,
+        "end_audio_fade_seconds": END_AUDIO_FADE_SECONDS,
+        "voiceover_min_chars": VOICEOVER_MIN_CHARS,
+        "voiceover_max_chars": VOICEOVER_MAX_CHARS,
+        "tts_interval_silence": TTS_INTERVAL_SILENCE,
+        "tts_required_keywords": TTS_REQUIRED_KEYWORDS,
+        "tts_emo_alpha": TTS_EMO_ALPHA,
+        "tts_emo_text": TTS_EMO_TEXT,
+        "tts_emo_audio_prompt": TTS_EMO_AUDIO_PROMPT,
+        "tts_use_emo_text": TTS_USE_EMO_TEXT,
+        "tts_use_random": TTS_USE_RANDOM,
+        "tts_temperature": TTS_TEMPERATURE,
+        "tts_top_p": TTS_TOP_P,
+        "tts_top_k": TTS_TOP_K,
+        "tts_repetition_penalty": TTS_REPETITION_PENALTY,
+        "sadtalker_pose_style": SADTALKER_POSE_STYLE,
+        "sadtalker_source_max_height": SADTALKER_SOURCE_MAX_HEIGHT,
+    }
+
+
+def build_resume_contract(inputs, style_data):
+    return {
+        "schema_version": 1,
+        "inputs": {key: file_fingerprint(path) for key, path in inputs.items()},
+        "policy": build_pipeline_policy(),
+        "style": {dimension: style_data[dimension] for dimension in STYLE_DIMENSIONS},
+    }
+
+
+def validate_resume_contract(previous_manifest, current_contract):
+    previous_contract = previous_manifest.get("resume_contract")
+    if not isinstance(previous_contract, dict):
+        raise PipelineError("旧 manifest 缺少 resume_contract，禁止 --resume 复用；请全量重跑")
+    if previous_contract != current_contract:
+        raise PipelineError("当前输入或流水线策略已变化，禁止 --resume 复用旧产物；请全量重跑")
+
+
 def atomic_json(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
@@ -177,6 +230,34 @@ def replace_output(temporary, destination):
 def is_reusable_file(path):
     path = Path(path)
     return path.is_file() and path.stat().st_size > 0
+
+
+def reusable_output(pipeline, key):
+    previous_outputs = pipeline.previous_manifest.get("outputs", {})
+    previous_fingerprints = pipeline.previous_manifest.get("output_fingerprints", {})
+    raw_path = previous_outputs.get(key)
+    if not raw_path:
+        return None
+    try:
+        path = Path(raw_path).expanduser().resolve()
+        path.relative_to(pipeline.project_dir)
+    except (OSError, TypeError, ValueError):
+        return None
+    if not is_reusable_file(path):
+        return None
+    fingerprint = previous_fingerprints.get(key)
+    if not isinstance(fingerprint, dict):
+        raise PipelineError(f"旧 manifest 缺少 {key} 产物指纹，禁止 --resume 复用")
+    if fingerprint.get("sha256") != sha256_file(path):
+        raise PipelineError(f"{key} 产物内容与旧 manifest 指纹不一致，禁止 --resume 复用")
+    return path
+
+
+def same_resolved_path(left, right):
+    try:
+        return Path(left).expanduser().resolve() == Path(right).expanduser().resolve()
+    except (OSError, TypeError, ValueError):
+        return False
 
 
 def mark_reused(pipeline, step, path):
@@ -351,6 +432,7 @@ class PipelineRun:
             "updated_at": now_iso(),
             "steps": {},
             "outputs": {},
+            "output_fingerprints": {},
             "upload": {"status": "not_requested"},
         }
 
@@ -404,6 +486,12 @@ class PipelineRun:
 
     def record_output(self, key, path):
         self.manifest["outputs"][key] = str(path)
+        try:
+            path = Path(path)
+            if path.is_file():
+                self.manifest.setdefault("output_fingerprints", {})[key] = file_fingerprint(path)
+        except OSError:
+            pass
         self.write_manifest()
 
     def run_checked(self, step, command, timeout=600, cwd=None, env=None):
@@ -586,15 +674,22 @@ def execute(args):
             ],
         )
         style_data = load_style_plan(style_plan)
-        pipeline.manifest["style"] = {dimension: style_data[dimension] for dimension in STYLE_DIMENSIONS}
-        pipeline.manifest["inputs"] = {
-            "reference_audio": str(reference_audio),
-            "photo": str(photo),
-            "html": str(html_source),
-            "text": str(text_source),
-            "style_plan": str(style_plan),
-            "style_history": str(style_history),
+        input_paths = {
+            "reference_audio": reference_audio,
+            "photo": photo,
+            "html": html_source,
+            "text": text_source,
+            "style_plan": style_plan,
+            "style_history": style_history,
         }
+        resume_contract = build_resume_contract(input_paths, style_data)
+        if args.resume:
+            validate_resume_contract(pipeline.previous_manifest, resume_contract)
+        pipeline.manifest["style"] = {dimension: style_data[dimension] for dimension in STYLE_DIMENSIONS}
+        pipeline.manifest["inputs"] = {key: str(path) for key, path in input_paths.items()}
+        pipeline.manifest["resume_contract"] = resume_contract
+        pipeline.manifest["input_fingerprints"] = resume_contract["inputs"]
+        pipeline.manifest["policy"] = resume_contract["policy"]
         pipeline.write_manifest()
 
         text_content = text_source.read_text(encoding="utf-8").strip()
@@ -603,7 +698,10 @@ def execute(args):
         log_step(f"1/{TOTAL_STEPS}", "TTS")
         natural_wav = pipeline.project_dir / "voiceover_natural.wav"
         natural_tmp = pipeline.run_dir / "voiceover_natural.wav"
-        if args.resume and is_reusable_file(natural_wav):
+        previous_tts_report = None
+        if args.resume:
+            previous_tts_report = reusable_output(pipeline, "tts_synthesis_report")
+        if args.resume and same_resolved_path(reusable_output(pipeline, "natural_audio"), natural_wav):
             mark_reused(pipeline, "tts", natural_wav)
         else:
             environment = os.environ.copy()
@@ -627,6 +725,9 @@ def execute(args):
                     f"{TTS_INTERVAL_SILENCE:g}",
                     "--json-report",
                     str(pipeline.run_dir / "tts-synthesis-report.json"),
+                    "--whisper-python",
+                    str(SYS_PY),
+                    *(["--required-keywords", ",".join(TTS_REQUIRED_KEYWORDS)] if TTS_REQUIRED_KEYWORDS else []),
                     *(["--emo-text", TTS_EMO_TEXT] if TTS_EMO_TEXT else []),
                     *(["--emo-audio-prompt", TTS_EMO_AUDIO_PROMPT] if TTS_EMO_AUDIO_PROMPT else []),
                     "--emo-alpha",
@@ -646,36 +747,46 @@ def execute(args):
                 env=environment,
             )
             replace_output(natural_tmp, natural_wav)
+            previous_tts_report = pipeline.run_dir / "tts-synthesis-report.json"
         pipeline.record_output("natural_audio", natural_wav)
         text_check, f0 = pipeline.verify_audio(natural_wav, "verify-natural-audio")
         print(f"✅ 原速口播: {natural_wav} ({len(text_check)}字, F0={f0:.0f}Hz)")
 
         # 逐段合成质量门禁：任何分段 fallback 或内容验收失败都应阻断后续昂贵渲染
-        report_json = pipeline.run_dir / "tts-synthesis-report.json"
+        report_json = Path(previous_tts_report).expanduser().resolve() if previous_tts_report else pipeline.run_dir / "tts-synthesis-report.json"
         if report_json.is_file():
             try:
                 with open(report_json, encoding="utf-8") as handle:
                     synth_report = json.load(handle)
                 audit = synth_report.get("f0_audit", {})
                 content = synth_report.get("content_acceptance", {})
-                if audit and not audit.get("passed", True):
+                if not audit or not audit.get("passed", False):
                     raise PipelineError(
                         f"TTS 逐段 F0 审计未通过: fallback={audit.get('fallback_count')}, "
                         f"male_ratio={audit.get('male_ratio')}"
                     )
-                if TTS_REQUIRED_KEYWORDS and content and not content.get("passed", True):
+                if not content or not content.get("passed", False):
                     raise PipelineError(
                         f"TTS 内容验收未通过: similarity={content.get('similarity')}, "
                         f"missing={content.get('missing_keywords')}"
                     )
+                run_report_json = pipeline.run_dir / "tts-synthesis-report.json"
+                project_report_json = pipeline.project_dir / "tts-synthesis-report.json"
+                if report_json != run_report_json:
+                    shutil.copy2(report_json, run_report_json)
+                shutil.copy2(run_report_json, project_report_json)
                 pipeline.manifest["tts_synthesis_report"] = synth_report
-            except (json.JSONDecodeError, OSError):
-                pipeline.record_step("tts-report-check", "skipped", note="无法解析合成报告")
+                pipeline.record_output("tts_synthesis_report", project_report_json)
+                pipeline.record_step("tts-report-check", "success", report=str(project_report_json))
+            except (json.JSONDecodeError, OSError) as exc:
+                raise PipelineError(f"TTS 合成报告不可解析: {report_json}") from exc
+        else:
+            raise PipelineError("缺少 tts-synthesis-report.json，禁止继续生成视频")
 
         log_step(f"2/{TOTAL_STEPS}", f"{AUDIO_SPEED:g}x speed and loudness normalization")
         speed_wav = pipeline.project_dir / "voiceover_130.wav"
         speed_tmp = pipeline.run_dir / "voiceover_130.wav"
-        if args.resume and is_reusable_file(speed_wav):
+        if args.resume and same_resolved_path(reusable_output(pipeline, "final_audio"), speed_wav):
             mark_reused(pipeline, "speed-audio", speed_wav)
         else:
             pipeline.run_checked(
@@ -698,15 +809,6 @@ def execute(args):
             )
             replace_output(speed_tmp, speed_wav)
         pipeline.record_output("final_audio", speed_wav)
-        pipeline.manifest["audio_speed"] = AUDIO_SPEED
-        pipeline.manifest["max_final_duration"] = MAX_FINAL_DURATION
-        pipeline.manifest["policy"] = {
-            "audio_speed": AUDIO_SPEED,
-            "max_final_duration": MAX_FINAL_DURATION,
-            "end_padding_seconds": END_PADDING_SECONDS,
-            "voiceover_min_chars": VOICEOVER_MIN_CHARS,
-            "voiceover_max_chars": VOICEOVER_MAX_CHARS,
-        }
         duration = pipeline.ffprobe_duration(speed_wav)
         render_duration = duration + END_PADDING_SECONDS
         audio_dir = pipeline.project_dir / "audio"
@@ -734,7 +836,7 @@ def execute(args):
         log_step(f"3/{TOTAL_STEPS}", "Whisper caption alignment")
         captions_path = pipeline.project_dir / "captions.json"
         captions_tmp = pipeline.run_dir / "captions.json"
-        if args.resume and is_reusable_file(captions_path):
+        if args.resume and same_resolved_path(reusable_output(pipeline, "captions"), captions_path):
             mark_reused(pipeline, "caption-alignment", captions_path)
         else:
             pipeline.run_checked(
@@ -809,12 +911,7 @@ def execute(args):
         digital_human_run_dir = pipeline.project_dir / "digital_human" / pipeline.run_id
         reusable_digital_human = None
         if args.resume:
-            try:
-                candidate = Path(pipeline.previous_manifest.get("outputs", {}).get("digital_human", ""))
-                if is_reusable_file(candidate):
-                    reusable_digital_human = candidate
-            except (OSError, TypeError):
-                reusable_digital_human = None
+            reusable_digital_human = reusable_output(pipeline, "digital_human")
         if reusable_digital_human:
             digital_human = reusable_digital_human
             mark_reused(pipeline, "sadtalker", digital_human)
@@ -876,7 +973,7 @@ def execute(args):
         renders_dir.mkdir(exist_ok=True)
         main_video = renders_dir / "main_video.mp4"
         main_tmp = pipeline.run_dir / "main_video.mp4"
-        if args.resume and is_reusable_file(main_video):
+        if args.resume and same_resolved_path(reusable_output(pipeline, "main_video"), main_video):
             mark_reused(pipeline, "hyperframes-render", main_video)
         else:
             pipeline.run_checked(
@@ -911,7 +1008,7 @@ def execute(args):
         pil_python = find_pil_python()
         projection = pipeline.project_dir / "shadow_layer.png"
         projection_tmp = pipeline.run_dir / "shadow_layer.png"
-        if args.resume and is_reusable_file(projection):
+        if args.resume and same_resolved_path(reusable_output(pipeline, "projection"), projection):
             mark_reused(pipeline, "projection-layer", projection)
         else:
             pipeline.run_checked(
@@ -943,7 +1040,7 @@ def execute(args):
             f"[2:a]afade=t=out:st={audio_fade_start:.3f}:d={END_AUDIO_FADE_SECONDS:.3f},"
             f"apad=pad_dur={END_PADDING_SECONDS:.3f},atrim=0:{render_duration:.3f}[a]"
         )
-        if args.resume and is_reusable_file(final_video):
+        if args.resume and same_resolved_path(reusable_output(pipeline, "final_video"), final_video):
             mark_reused(pipeline, "final-composite", final_video)
         else:
             pipeline.run_checked(
@@ -1061,19 +1158,37 @@ def execute(args):
         pipeline.manifest["outputs"] = {
             "natural_audio": str(natural_wav),
             "final_audio": str(speed_wav),
+            "canonical_final_audio": str(audio_dir / "voiceover_130.wav"),
             "captions": str(captions_path),
             "html": str(updated_html),
+            "text": str(text_source),
             "digital_human": str(digital_human),
             "main_video": str(main_video),
+            "projection": str(projection),
             "final_video": str(final_video),
             "canonical_final_video": str(canonical_final),
+            "tts_synthesis_report": str(pipeline.project_dir / "tts-synthesis-report.json"),
             "visual_report": str(visual_report),
             "final_video_sha256": sha256_file(final_video),
             "duration": final_duration,
+            "target_final_duration": render_duration,
             "resolution": "1920x1080",
             "audio_streams": 1,
             "whisper_characters": len(verified_text),
             "f0_hz": verified_f0,
+        }
+        pipeline.manifest["output_fingerprints"] = {
+            key: file_fingerprint(path)
+            for key, path in pipeline.manifest["outputs"].items()
+            if key not in {
+                "final_video_sha256",
+                "duration",
+                "target_final_duration",
+                "resolution",
+                "audio_streams",
+                "whisper_characters",
+                "f0_hz",
+            }
         }
         pipeline.set_status("validated")
         print(f"\n✅ 视频已生成并通过全部机器校验: {final_video}")

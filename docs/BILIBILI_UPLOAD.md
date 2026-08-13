@@ -41,9 +41,13 @@ Before invoking the adapter, the workflow checks:
 
 1. The project manifest is `validated` or `success`.
 2. The final video SHA256 matches the manifest.
-3. A deterministic job name is derived from the project name and video hash.
-4. A local lock prevents concurrent pipeline/upload operations.
-5. A success marker records the hash, visibility, job name, and done directory.
+3. The manifest policy matches the current workflow duration and script limits.
+4. `outputs.text`, `final_audio`, `digital_human`, and `main_video` are inside the project directory and exist.
+5. `tts_synthesis_report` exists and both F0 audit and Whisper content acceptance passed.
+6. The final video duration matches both `outputs.duration` and `final_audio_duration + end_padding_seconds`.
+7. A deterministic job name is derived from the project name and video hash.
+8. A local lock prevents concurrent pipeline/upload operations.
+9. A success marker records the hash, visibility, job name, and done directory.
 
 Running the same upload command for the same video is idempotent when the
 adapter's done directory still exists.

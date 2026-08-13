@@ -154,6 +154,18 @@ def main():
     parser.add_argument("--top-p", type=float, default=0.85)
     parser.add_argument("--top-k", type=int, default=30)
     parser.add_argument("--repetition-penalty", type=float, default=10.0)
+    parser.add_argument(
+        "--required-keywords",
+        type=str,
+        default="",
+        help="Comma-separated keywords that must survive Whisper content acceptance.",
+    )
+    parser.add_argument(
+        "--whisper-python",
+        type=str,
+        default=os.environ.get("HFW_SYS_PY", str(PROJECT_ROOT / "venv" / "bin" / "python")),
+        help="Python interpreter used for faster-whisper verification.",
+    )
     args = parser.parse_args()
 
     default_text = (
@@ -180,6 +192,8 @@ def main():
     top_p = args.top_p
     top_k = args.top_k
     repetition_penalty = args.repetition_penalty
+    required_keywords = [item.strip() for item in args.required_keywords.split(",") if item.strip()]
+    whisper_python = args.whisper_python
 
     try:
         from scripts.tts_quality import (
@@ -210,6 +224,7 @@ def main():
     print(f"Inter-segment silence: {interval_silence:.3f}s")
     print(f"Emotion guidance: use_emo_text={emotion_kwargs['use_emo_text']} alpha={emotion_kwargs['emo_alpha']:.2f} random={emotion_kwargs['use_random']} static_emo_text={'yes' if 'emo_text' in emotion_kwargs else 'no'} emo_audio_prompt={'yes' if 'emo_audio_prompt' in emotion_kwargs else 'no'}")
     print(f"Generation sampling: temperature={emotion_kwargs['temperature']:.3f} top_p={emotion_kwargs['top_p']:.3f} top_k={emotion_kwargs['top_k']} repetition_penalty={emotion_kwargs['repetition_penalty']:.3f}")
+    print(f"Required content keywords: {required_keywords}")
     print("--------------------------------------------------")
 
     # 验证参考音频存在
@@ -348,7 +363,7 @@ def main():
     # 转写 (faster-whisper)
     print("Running faster-whisper transcription...")
     whisper_cmd = [
-        str(PROJECT_ROOT / "venv" / "bin" / "python"), "-c",
+        str(whisper_python), "-c",
         "from faster_whisper import WhisperModel; "
         "model = WhisperModel('base', device='cpu', compute_type='int8'); "
         "segments, info = model.transcribe('{}', language='zh'); "
@@ -367,7 +382,7 @@ def main():
         from tts_quality import audit_segment_f0s, content_acceptance
 
     f0_audit = audit_segment_f0s(segment_f0s)
-    content = content_acceptance(text, transcription, required_ratio=0.7)
+    content = content_acceptance(text, transcription, required_ratio=0.7, keywords=required_keywords)
 
     report = {
         "output_path": str(output_path),
