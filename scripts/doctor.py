@@ -104,12 +104,6 @@ def check_hyperframes_version(config):
     binary = config_path(ROOT, config, "paths.hyperframes_bin")
     if not binary.is_file():
         return False, "hyperframes version", str(binary), "binary missing"
-    result = run([binary, "--version"])
-    output = "\n".join(
-        value.strip() for value in (result.stdout, result.stderr) if value and value.strip()
-    )
-    matches = re.findall(r"\b\d+\.\d+\.\d+\b", output)
-    cli_version = matches[-1] if matches else ""
     installed_path = ROOT / "node_modules" / "hyperframes" / "package.json"
     installed_version = ""
     if installed_path.is_file():
@@ -119,9 +113,22 @@ def check_hyperframes_version(config):
             )
         except (OSError, json.JSONDecodeError):
             installed_version = ""
-    version_ok = installed_version == expected_version or cli_version == expected_version
+    result = run([binary, "--version"])
+    output = "\n".join(
+        value.strip() for value in (result.stdout, result.stderr) if value and value.strip()
+    )
+    cli_version = ""
+    for line in output.splitlines():
+        stripped = line.strip()
+        named = re.search(r"\bhyperframes\s+v?(\d+\.\d+\.\d+)\b", stripped, re.IGNORECASE)
+        exact = not installed_version and re.fullmatch(r"v?(\d+\.\d+\.\d+)", stripped)
+        if named or exact:
+            cli_version = (named or exact).group(1)
+            break
+    version_ok = installed_version == expected_version
+    cli_version_ok = not cli_version or cli_version == expected_version
     cli_ok = result.returncode == 0
-    ok = cli_ok and version_ok
+    ok = cli_ok and version_ok and cli_version_ok
     detail = (
         f"package={expected}, installed={installed_version or 'unknown'}, "
         f"binary={cli_version or 'unknown'}"
