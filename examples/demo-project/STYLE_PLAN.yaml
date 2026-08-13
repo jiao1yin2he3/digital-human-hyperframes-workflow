@@ -1,0 +1,41 @@
+project: demo-project
+creative_seed: demo-civic-tech-brief
+content_goal: 演示一个可审计的短视频工作流输入结构
+audience: 对自动化视频生产感兴趣的开发者
+emotion: 冷静、清晰、可信
+style_family: civic-briefing
+palette: graphite-lime
+typography: compact-sans
+composition: left-rail-dashboard
+scene_grammar: three-card-brief
+motion_language: measured-slide
+transitions: clean-wipe
+media_treatment: flat-data-shapes
+pacing: brisk-brief
+audio_direction: voice-only
+details:
+  palette_colors: ["#101114", "#f4f7f2", "#b7f35c", "#5d6670"]
+  display_font: system-ui
+  body_font: system-ui
+  layout_notes: 左侧进度栏加右侧信息面板，使用少量数据图形模拟素材位。
+intentional_differences:
+  - dimension: style_family
+    from: editorial-collage
+    to: civic-briefing
+    evidence: data-style-style-family 与清晰简报视觉
+  - dimension: palette
+    from: ink-red-cream
+    to: graphite-lime
+    evidence: CSS token 使用 graphite 与 lime 强调色
+  - dimension: typography
+    from: condensed-editorial
+    to: compact-sans
+    evidence: 标题和正文都使用紧凑系统无衬线
+  - dimension: composition
+    from: asymmetric-split
+    to: left-rail-dashboard
+    evidence: stage 使用左侧进度栏和右侧主内容区
+  - dimension: motion_language
+    from: snap-and-hold
+    to: measured-slide
+    evidence: GSAP timeline 使用短滑入和淡入

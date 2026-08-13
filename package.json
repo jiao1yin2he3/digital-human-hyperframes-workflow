@@ -1,0 +1,19 @@
+{
+  "name": "hyperframes-workflow",
+  "version": "1.0.0",
+  "description": "Auditable HyperFrames short-video production workflow with style gates, timeline checks, and optional publishing.",
+  "main": "index.js",
+  "scripts": {
+    "doctor": "python3 scripts/doctor.py",
+    "test": "python3 -m unittest discover -s tests -v",
+    "check": "python3 -m compileall -q scripts tests && npm test",
+    "check:workflow": "npm run doctor && npm run check"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "gsap": "3.15.0",
+    "hyperframes": "0.7.104"
+  }
+}

@@ -1,0 +1,42 @@
+# 复制到 projects/<topic>/STYLE_PLAN.yaml 后，必须把所有 REPLACE-ME 替换为真实值。
+project: replace_me
+creative_seed: replace-me
+content_goal: REPLACE-ME
+audience: REPLACE-ME
+emotion: REPLACE-ME
+style_family: replace-me
+palette: replace-me
+typography: replace-me
+composition: replace-me
+scene_grammar: replace-me
+motion_language: replace-me
+transitions: replace-me
+media_treatment: replace-me
+pacing: replace-me
+audio_direction: voice-only
+details:
+  palette_colors: ["#000000", "#ffffff"]
+  display_font: REPLACE-ME
+  body_font: REPLACE-ME
+  layout_notes: REPLACE-ME
+intentional_differences:
+  - dimension: style_family
+    from: previous-style
+    to: replace-me
+    evidence: HTML data-style-family 与整体视觉语言
+  - dimension: palette
+    from: previous-palette
+    to: replace-me
+    evidence: CSS 色彩 token
+  - dimension: typography
+    from: previous-typography
+    to: replace-me
+    evidence: 标题和正文排版规则
+  - dimension: composition
+    from: previous-composition
+    to: replace-me
+    evidence: scene DOM 布局结构
+  - dimension: motion_language
+    from: previous-motion
+    to: replace-me
+    evidence: GSAP 时间线和缓动方式

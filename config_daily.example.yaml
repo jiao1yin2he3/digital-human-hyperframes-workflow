@@ -1,0 +1,23 @@
+# 可直接运行：
+#   ./venv/bin/python scripts/pipeline_daily.py --config config_daily.example.yaml
+# 命令行参数会覆盖同名配置项。
+
+name: replace_me
+ref: cosyvoice/ref_user5_clean.wav
+photo: digital-human/user_avatar.jpg
+html: projects/replace_me/index.html
+text: projects/replace_me/口播稿.txt
+style_plan: projects/replace_me/STYLE_PLAN.yaml
+style_history: STYLE_HISTORY.md
+
+# 安全默认值：先生成并核验，不上传。
+upload: false
+
+# 默认全量重跑。失败后确认输入未变更时，可在命令行传 --resume 或改为 true。
+resume: false
+
+# 仅在 upload: true 时使用；不配置 public，默认仅自己可见。
+bili_title: REPLACE-ME
+bili_desc: ""
+bili_dynamic: ""
+bili_tag: AI生成,自动化

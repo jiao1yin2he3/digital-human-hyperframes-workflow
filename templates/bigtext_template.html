@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>AI热点速递</title>
+<script src="vendor/gsap.min.js"></script>
+<style>
+@font-face{font-family:'PingFang SC';src:local('PingFang SC')}
+@font-face{font-family:'Microsoft YaHei';src:local('Microsoft YaHei')}
+*{box-sizing:border-box}
+body{margin:0;overflow:hidden;background:#0a0a1a;color:#fff;font-family:'PingFang SC','Microsoft YaHei',sans-serif}
+#stage{width:1920px;height:1080px;position:relative;overflow:hidden}
+#stage::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,#0a0a1a 0%,#16213e 50%,#1a1a2e 100%);z-index:0}
+.grain{position:absolute;inset:0;opacity:.06;background-image:radial-gradient(#fff 1px,transparent 1px);background-size:4px 4px;z-index:1;pointer-events:none}
+.header{position:absolute;top:50px;left:90px;right:90px;display:flex;justify-content:space-between;align-items:center;z-index:10}
+.brand{font-size:38px;font-weight:800;display:flex;align-items:center;gap:14px;letter-spacing:1px}
+.brand-icon{font-size:44px}
+.date{font-size:26px;color:#a5b4fc;border:1px solid #a5b4fc44;border-radius:999px;padding:10px 26px;background:rgba(15,23,42,.6);backdrop-filter:blur(10px)}
+
+/* 场景：绝对定位单层，每屏只显示一个场景 */
+.scene{position:absolute;inset:0;display:none;flex-direction:column;justify-content:center;align-items:center;text-align:center;z-index:2}
+/* 大标题：120px 超大 + 高对比白字 + 深色描边 + 光晕 */
+.title{font-size:120px;font-weight:900;line-height:1.25;letter-spacing:2px;
+  color:#ffffff;text-shadow:0 0 40px rgba(102,126,234,.45),0 8px 24px rgba(0,0,0,.8);
+  -webkit-text-stroke:2px rgba(15,23,42,.9);max-width:1700px}
+.accent{background:linear-gradient(135deg,#fbbf24,#f97316);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  -webkit-text-stroke:0}
+/* 副标题：大号可读 */
+.desc{font-size:52px;color:#e2e8f0;line-height:1.5;margin-top:46px;max-width:1500px;
+  text-shadow:0 2px 8px rgba(0,0,0,.9),0 0 30px rgba(0,0,0,.5)}
+/* 数据卡片 */
+.cards{display:flex;gap:44px;margin-top:60px}
+.card{flex:1;min-width:420px;text-align:center;padding:40px 36px;border-radius:28px;
+  background:rgba(255,255,255,.07);border:2px solid rgba(165,180,252,.35);
+  box-shadow:0 20px 60px rgba(0,0,0,.4)}
+.card h2{font-size:58px;margin:0 0 12px;font-weight:900;color:#fbbf24}
+.card p{font-size:34px;color:#e2e8f0;line-height:1.5;margin:0}
+
+/* 底部字幕 */
+.subbar{position:absolute;left:120px;right:120px;bottom:70px;height:110px;display:flex;justify-content:center;align-items:center;z-index:20}
+.sub{font-size:44px;font-weight:800;padding:22px 50px;border-radius:999px;
+  background:rgba(10,10,26,.92);border:2px solid rgba(165,180,252,.5);
+  box-shadow:0 10px 40px rgba(0,0,0,.6);max-width:1680px;text-align:center;
+  color:#ffffff;line-height:1.35}
+</style>
+</head>
+<body>
+<div id="stage" data-composition-id="template_bigtext" data-start="0" data-duration="45" data-width="1920" data-height="1080" data-fps="30"
+  data-style-style-family="replace-me"
+  data-style-palette="replace-me"
+  data-style-typography="replace-me"
+  data-style-composition="replace-me"
+  data-style-scene-grammar="replace-me"
+  data-style-motion-language="replace-me"
+  data-style-transitions="replace-me"
+  data-style-media-treatment="replace-me"
+  data-style-pacing="replace-me"
+  data-style-audio-direction="voice-only">
+  <audio id="main-voiceover" data-start="0" data-duration="45" data-track-index="0" src="audio/voiceover_130.wav"></audio>
+
+  <div class="grain"></div>
+
+  <div class="header" id="header">
+    <div class="brand"><span class="brand-icon">⚡</span>AI热点速递</div>
+    <div class="date">2026.08.10 · 热点</div>
+  </div>
+
+  <div class="scene" id="s1">
+    <div class="title">半年卖<span class="accent">9.77亿</span>的门店<br>胖东来说关就关！</div>
+    <div class="desc">开了24年的许昌生活广场店<br>2026年12月正式关闭</div>
+  </div>
+
+  <div class="scene" id="s2">
+    <div class="title"><span class="accent">为什么关店？</span><br>于东来一句话</div>
+    <div class="desc">每一个项目都是国际一流品质<br>达不到的，都关了</div>
+  </div>
+
+  <div class="scene" id="s3">
+    <div class="title">老店落幕<br><span class="accent">新店接棒</span></div>
+    <div class="desc">60万平梦之城在盖<br>郑州东站店装修中</div>
+  </div>
+
+  <div class="scene" id="s4">
+    <div class="title">情怀营销<br>还是<span class="accent">真信仰？</span></div>
+    <div class="desc">员工平均工资9598元<br>上半年销售139.5亿 涨24%</div>
+  </div>
+
+  <div class="subbar" id="subbar">
+    <div class="sub" id="subtitle-box">加载字幕中...</div>
+  </div>
+</div>
+
+<script>
+const captions=[];
+const box=document.getElementById('subtitle-box');
+const captionTl=gsap.timeline({paused:true});
+for(const c of captions){
+  captionTl.set(box,{textContent:c.text,opacity:1},c.start);
+  captionTl.set(box,{opacity:0},c.end-0.1);
+}
+window.__timelines=window.__timelines={};
+window.__timelines.template_bigtext=captionTl;
+
+gsap.to('#header',{opacity:1,duration:0.5,delay:0.3});
+gsap.to('#subbar',{opacity:1,duration:0.3,delay:0.2});
+
+// 场景切换逻辑：使用 setTimeout 直接控制显示
+const scenes=[...document.querySelectorAll('.scene')];
+const sceneTimes=[0,12,24,36]; // 场景开始时间（秒）
+
+// 初始隐藏所有场景
+scenes.forEach(s=>{
+  s.style.display='none';
+  s.style.opacity='0';
+});
+
+// 显示第一个场景
+scenes[0].style.display='flex';
+scenes[0].style.opacity='1';
+
+// 在每个时间点切换场景
+for(let i=1;i<sceneTimes.length;i++){
+  const t=sceneTimes[i]*1000; // 转为毫秒
+  const prevScene=scenes[i-1];
+  const nextScene=scenes[i];
+
+  // 淡出当前场景
+  gsap.to(prevScene,{
+    opacity:0,
+    duration:0.4,
+    delay:(sceneTimes[i]-12)*1000, // 在上一个场景显示结束前0.4s开始淡出
+    onComplete:()=>{
+      prevScene.style.display='none';
+    }
+  });
+  // 淡入下一个场景
+  nextScene.style.display='flex';
+  gsap.fromTo(nextScene,{opacity:0},{opacity:1,duration:0.4,delay:t-20});
+  // 标题和描述入场动画
+  const title=nextScene.querySelector('.title');
+  const desc=nextScene.querySelector('.desc');
+  if(title){
+    gsap.fromTo(title,{scale:0.9,opacity:0},{scale:1,opacity:1,duration:0.6,delay:t+200});
+  }
+  if(desc){
+    gsap.fromTo(desc,{y:40,opacity:0},{y:0,opacity:1,duration:0.5,delay:t+500});
+  }
+}
+</script>
+</body>
+</html>

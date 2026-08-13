@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HyperFrames Demo Project</title>
+  <script src="vendor/gsap.min.js"></script>
+  <style>
+    :root {
+      --bg: #101114;
+      --panel: #f4f7f2;
+      --accent: #b7f35c;
+      --muted: #5d6670;
+      --ink: #161a1d;
+      --font: system-ui, -apple-system, "PingFang SC", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: var(--bg); }
+    #stage {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      color: var(--panel);
+      font-family: var(--font);
+      background: var(--bg);
+    }
+    .rail { position: absolute; inset: 0 auto 0 0; width: 260px; padding: 86px 34px; border-right: 2px solid #2b3035; }
+    .rail-label { color: var(--accent); font-size: 28px; letter-spacing: 0; }
+    .rail-line { width: 8px; height: 540px; margin-top: 48px; background: #2b3035; }
+    .rail-line::after { content: ""; display: block; width: 8px; height: 180px; background: var(--accent); }
+    .scene { position: absolute; inset: 0; display: none; padding: 120px 130px 120px 360px; }
+    .scene:first-of-type { display: block; }
+    .kicker { color: var(--accent); font-size: 30px; }
+    .title { max-width: 1100px; margin-top: 34px; color: var(--panel); font-size: 96px; line-height: 1.08; }
+    .body { max-width: 1120px; margin-top: 48px; color: #c2c9ce; font-size: 42px; line-height: 1.45; }
+    .data-panel { position: absolute; right: 100px; bottom: 190px; width: 460px; padding: 28px; color: var(--ink); background: var(--panel); }
+    .data-panel strong { display: block; font-size: 58px; line-height: 1; }
+    .data-panel span { display: block; margin-top: 14px; color: var(--muted); font-size: 24px; }
+    #subtitle-box { position: absolute; left: 360px; right: 100px; bottom: 58px; min-height: 72px; color: var(--panel); font-size: 40px; line-height: 1.4; }
+  </style>
+</head>
+<body>
+<div id="stage"
+  data-composition-id="demo-project"
+  data-start="0"
+  data-duration="45"
+  data-width="1920"
+  data-height="1080"
+  data-fps="30"
+  data-style-style-family="civic-briefing"
+  data-style-palette="graphite-lime"
+  data-style-typography="compact-sans"
+  data-style-composition="left-rail-dashboard"
+  data-style-scene-grammar="three-card-brief"
+  data-style-motion-language="measured-slide"
+  data-style-transitions="clean-wipe"
+  data-style-media-treatment="flat-data-shapes"
+  data-style-pacing="brisk-brief"
+  data-style-audio-direction="voice-only">
+  <audio id="main-voiceover" data-start="0" data-duration="45" data-track-index="0" src="audio/voiceover_130.wav"></audio>
+  <aside class="rail">
+    <div class="rail-label">DEMO / 01</div>
+    <div class="rail-line"></div>
+  </aside>
+  <section class="scene" id="scene-1">
+    <div class="kicker">AUDITABLE VIDEO WORKFLOW</div>
+    <div class="title">从输入到成片，每一步都有记录。</div>
+    <div class="body">公开示例只展示结构，不包含真实素材或账号数据。</div>
+    <div class="data-panel"><strong>10</strong><span>风格维度</span></div>
+  </section>
+  <section class="scene" id="scene-2">
+    <div class="kicker">REPRODUCIBLE PIPELINE</div>
+    <div class="title">字幕、数字人和动画统一对齐。</div>
+    <div class="body">时间轴检查会在昂贵渲染前发现音频与画面的偏差。</div>
+    <div class="data-panel"><strong>0.5s</strong><span>数字人与音频允许误差</span></div>
+  </section>
+  <section class="scene" id="scene-3">
+    <div class="kicker">OPTIONAL PUBLISHING</div>
+    <div class="title">上传是显式动作，不是默认副作用。</div>
+    <div class="body">通过 manifest 和视频哈希避免重复发布。</div>
+    <div class="data-panel"><strong>OFF</strong><span>默认上传状态</span></div>
+  </section>
+  <div id="subtitle-box"></div>
+</div>
+<script>
+const captions=[];
+const subtitleBox=document.getElementById('subtitle-box');
+const scenes=[...document.querySelectorAll('.scene')];
+const captionTimeline=gsap.timeline({paused:true});
+for(const caption of captions){
+  captionTimeline.set(subtitleBox,{textContent:caption.text,opacity:1},caption.start);
+  captionTimeline.set(subtitleBox,{opacity:0},Math.max(caption.start,caption.end-0.1));
+}
+window.__timelines={'demo-project':captionTimeline};
+scenes.forEach((scene,index)=>{
+  gsap.fromTo(scene,{x: index % 2 ? 42 : -42,opacity:0},{x:0,opacity:1,duration:0.45,delay:index * 0.3,ease:'power2.out'});
+});
+</script>
+</body>
+</html>

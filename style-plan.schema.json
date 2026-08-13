@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.hyperframes/style-plan.schema.json",
+  "title": "HyperFrames STYLE_PLAN",
+  "type": "object",
+  "required": [
+    "project",
+    "creative_seed",
+    "content_goal",
+    "audience",
+    "emotion",
+    "style_family",
+    "palette",
+    "typography",
+    "composition",
+    "scene_grammar",
+    "motion_language",
+    "transitions",
+    "media_treatment",
+    "pacing",
+    "audio_direction",
+    "details",
+    "intentional_differences"
+  ],
+  "properties": {
+    "project": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{1,63}$"},
+    "creative_seed": {"type": ["string", "integer"]},
+    "content_goal": {"type": "string", "minLength": 1},
+    "audience": {"type": "string", "minLength": 1},
+    "emotion": {"type": "string", "minLength": 1},
+    "style_family": {"$ref": "#/$defs/slug"},
+    "palette": {"$ref": "#/$defs/slug"},
+    "typography": {"$ref": "#/$defs/slug"},
+    "composition": {"$ref": "#/$defs/slug"},
+    "scene_grammar": {"$ref": "#/$defs/slug"},
+    "motion_language": {"$ref": "#/$defs/slug"},
+    "transitions": {"$ref": "#/$defs/slug"},
+    "media_treatment": {"$ref": "#/$defs/slug"},
+    "pacing": {"$ref": "#/$defs/slug"},
+    "audio_direction": {"$ref": "#/$defs/slug"},
+    "details": {"type": "object", "minProperties": 1},
+    "intentional_differences": {
+      "type": "array",
+      "minItems": 5,
+      "items": {
+        "type": "object",
+        "required": ["dimension", "from", "to", "evidence"],
+        "properties": {
+          "dimension": {"enum": ["style_family", "palette", "typography", "composition", "scene_grammar", "motion_language", "transitions", "media_treatment", "pacing", "audio_direction"]},
+          "from": {"type": "string", "minLength": 1},
+          "to": {"$ref": "#/$defs/slug"},
+          "evidence": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "$defs": {
+    "slug": {"type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"}
+  },
+  "additionalProperties": true
+}

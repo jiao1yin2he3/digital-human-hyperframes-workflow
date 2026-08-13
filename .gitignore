@@ -1,0 +1,50 @@
+.DS_Store
+*.log
+.env
+.env.*
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local heavyweight engines, checkpoints, and historical artifacts.
+archive/
+asset/
+audio/
+gfpgan/
+cosyvoice/
+index-tts/
+digital-human/
+renders/
+output/
+compositions/
+voiceover/
+*.mp4
+*.wav
+*.jpg
+*.jpeg
+*.png
+/index.html
+/template_base.html
+
+node_modules/
+venv/
+*-venv/
+runtime/
+runtime/*.lock
+validation/
+workflow.local.yaml
+STYLE_HISTORY.md
+STYLE_HISTORY.md.lock
+
+# Local operations notes and dated production reports.
+HyperFrames模板分析与随机化策略.md
+docs/hermes-daily-ai-drama-prompt.md
+docs/legacy-cleanup-report.md
+docs/字幕修复记录.md
+docs/tts_quality_*.md
+docs/tts_emotion_control_*.md
+
+# Real project folders may contain private scripts, source material, generated
+# media, upload markers, and account-specific instructions. Publish sanitized
+# examples under examples/ instead.
+projects/

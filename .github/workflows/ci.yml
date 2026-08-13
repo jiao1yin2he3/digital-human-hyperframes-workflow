@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: npm ci
+      - run: python -m pip install -r requirements-dev.txt
+      - run: npm test
+      - run: python scripts/validate_style.py --plan examples/demo-project/STYLE_PLAN.yaml --history STYLE_HISTORY.example.md --project demo-project --html examples/demo-project/index.html

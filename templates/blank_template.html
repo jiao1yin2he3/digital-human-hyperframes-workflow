@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HyperFrames Blank Composition</title>
+  <script src="vendor/gsap.min.js"></script>
+  <style>
+    :root {
+      --hf-bg: #101218;
+      --hf-surface: #1b2030;
+      --hf-accent: #79ffe1;
+      --hf-text: #f7f9ff;
+      --hf-muted: #aeb8ca;
+      --hf-display-font: "PingFang SC", sans-serif;
+      --hf-body-font: "PingFang SC", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: var(--hf-bg); }
+    #stage { position: relative; width: 1920px; height: 1080px; overflow: hidden; color: var(--hf-text); font-family: var(--hf-body-font); }
+    .scene { position: absolute; inset: 0; display: none; padding: 120px; }
+    .scene:first-of-type { display: block; }
+    .title { font-family: var(--hf-display-font); font-size: 96px; line-height: 1.15; }
+    .body { max-width: 1200px; margin-top: 40px; color: var(--hf-muted); font-size: 42px; line-height: 1.5; }
+    #subtitle-box { position: absolute; left: 160px; right: 360px; bottom: 54px; min-height: 72px; font-size: 40px; line-height: 1.4; }
+  </style>
+</head>
+<body>
+<div id="stage" data-composition-id="replace_me" data-start="0" data-duration="45" data-width="1920" data-height="1080" data-fps="30"
+  data-style-style-family="replace-me"
+  data-style-palette="replace-me"
+  data-style-typography="replace-me"
+  data-style-composition="replace-me"
+  data-style-scene-grammar="replace-me"
+  data-style-motion-language="replace-me"
+  data-style-transitions="replace-me"
+  data-style-media-treatment="replace-me"
+  data-style-pacing="replace-me"
+  data-style-audio-direction="voice-only">
+  <audio id="main-voiceover" data-start="0" data-duration="45" data-track-index="0" src="audio/voiceover_130.wav"></audio>
+  <section class="scene" id="scene-1"><div class="title">REPLACE ME</div><div class="body">重新设计场景结构，而不是只替换文字。</div></section>
+  <section class="scene" id="scene-2"><div class="title">REPLACE ME</div><div class="body">至少准备三个独立场景。</div></section>
+  <section class="scene" id="scene-3"><div class="title">REPLACE ME</div><div class="body">让构图、排版和运动语言符合 STYLE_PLAN。</div></section>
+  <div id="subtitle-box"></div>
+</div>
+<script>
+const captions=[];
+const subtitleBox=document.getElementById('subtitle-box');
+const captionTimeline=gsap.timeline({paused:true});
+for(const caption of captions){
+  captionTimeline.set(subtitleBox,{textContent:caption.text,opacity:1},caption.start);
+  captionTimeline.set(subtitleBox,{opacity:0},Math.max(caption.start,caption.end-0.1));
+}
+window.__timelines={replace_me:captionTimeline};
+</script>
+</body>
+</html>
