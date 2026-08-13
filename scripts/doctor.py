@@ -3,6 +3,7 @@
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -99,13 +100,32 @@ def check_hyperframes_version(config):
         return False, "hyperframes package", str(package_path), "package.json missing"
     package = json.loads(package_path.read_text(encoding="utf-8"))
     expected = package.get("dependencies", {}).get("hyperframes")
+    expected_version = str(expected).lstrip("^~")
     binary = config_path(ROOT, config, "paths.hyperframes_bin")
     if not binary.is_file():
         return False, "hyperframes version", str(binary), "binary missing"
     result = run([binary, "--version"])
-    actual = result.stdout.strip()
-    ok = result.returncode == 0 and actual == str(expected).lstrip("^~")
-    detail = f"package={expected}, binary={actual or 'unknown'}"
+    output = "\n".join(
+        value.strip() for value in (result.stdout, result.stderr) if value and value.strip()
+    )
+    matches = re.findall(r"\b\d+\.\d+\.\d+\b", output)
+    cli_version = matches[-1] if matches else ""
+    installed_path = ROOT / "node_modules" / "hyperframes" / "package.json"
+    installed_version = ""
+    if installed_path.is_file():
+        try:
+            installed_version = str(
+                json.loads(installed_path.read_text(encoding="utf-8")).get("version", "")
+            )
+        except (OSError, json.JSONDecodeError):
+            installed_version = ""
+    version_ok = installed_version == expected_version or cli_version == expected_version
+    cli_ok = result.returncode == 0
+    ok = cli_ok and version_ok
+    detail = (
+        f"package={expected}, installed={installed_version or 'unknown'}, "
+        f"binary={cli_version or 'unknown'}"
+    )
     return ok, "hyperframes version", str(binary), detail
 
 
